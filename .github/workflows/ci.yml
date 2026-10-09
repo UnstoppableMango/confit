@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      # dconf-cli and dbus let scripts/test.sh run the dconf adapter tests
+      # against a throwaway database on a private session bus.
+      - run: sudo apt-get update && sudo apt-get install -y dconf-cli dbus
+
+      - run: go vet ./...
+      - run: bash scripts/test.sh -race
+
+  # The single check branch protection requires. Add new jobs to `needs`.
+  required:
+    if: always()
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+        run: exit 1
