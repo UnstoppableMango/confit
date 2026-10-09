@@ -1,2 +1,4 @@
-/gb
-/bin/
+/result*
+*.local
+.direnv/
+bin/

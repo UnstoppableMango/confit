@@ -73,15 +73,20 @@ Every command takes `-C <repo>` (or `$CONFIT_REPO`). Most take `--json`. Exit co
 ## Not built yet
 
 - `confit watch` (the tiny debounce-and-exec trigger), commit debouncing and session squashing. Step 4 will need these for dconf.
-- systemd `.path`/timer units and Nix packaging, both planned for step 4.
+- systemd `.path`/timer units and a home-manager module, planned for step 4. The package itself builds with `nix build`.
 - k8s-style keyed list merges (`name` keys) in the JSON driver.
 - Pushing to a remote. The design's open question 1 (one repo per machine or shared) is still open.
 
 ## Development
 
+`nix develop` (or direnv) gives a shell with Go, git, gomod2nix, dconf and dbus.
+
 ```sh
-go test ./...            # dconf tests skip themselves
-bash scripts/test.sh     # everything, with a throwaway dconf on a private D-Bus
+make test        # go test ./...; dconf tests skip themselves
+make test-all    # everything, with a throwaway dconf on a private D-Bus
+make build       # nix build .#, which also runs the tests
+make check       # nix flake check: gofmt, nixfmt, actionlint
+make tidy        # after changing go.mod: go mod tidy and regenerate nix/gomod2nix.toml
 ```
 
-Needs Go 1.26, git ≥ 2.42, and for the dconf tests dconf-cli and dbus.
+Outside the dev shell it needs Go 1.26, git ≥ 2.42, and for the dconf tests dconf-cli and dbus.

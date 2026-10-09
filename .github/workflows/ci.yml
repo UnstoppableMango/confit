@@ -4,37 +4,33 @@ on:
   push:
     branches: [main]
   pull_request:
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
-permissions:
-  contents: read
+    branches: [main]
 
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: actions/setup-go@v6
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
         with:
-          go-version-file: go.mod
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
-      # dconf-cli and dbus let scripts/test.sh run the dconf adapter tests
-      # against a throwaway database on a private session bus.
-      - run: sudo apt-get update && sudo apt-get install -y dconf-cli dbus
+      - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
 
-      - run: go vet ./...
-      - run: bash scripts/test.sh -race
+      - uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
+        with:
+          name: unstoppablemango
+
+      - run: nix flake check
+      - run: nix build .#
 
   # The single check branch protection requires. Add new jobs to `needs`.
   required:
     if: always()
-    needs: [test]
+    needs: [build]
     runs-on: ubuntu-latest
     steps:
       - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
