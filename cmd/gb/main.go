@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -370,12 +371,12 @@ func cmdPending(b *core.Buffer, args []string) int {
 	return 0
 }
 
-func printPrepare(p core.PrepareResult) {
+func printPrepare(w io.Writer, p core.PrepareResult) {
 	for _, d := range p.Drift {
-		fmt.Printf("drift: %s %s\n", d.Commit[:12], d.Summary)
+		fmt.Fprintf(w, "drift: %s %s\n", d.Commit[:12], d.Summary)
 	}
 	if p.Reason != "" {
-		fmt.Println(p.Reason)
+		fmt.Fprintln(w, p.Reason)
 	}
 }
 
@@ -393,7 +394,8 @@ func cmdPrepare(b *core.Buffer, args []string) int {
 	if *asJSON {
 		emitJSON(p)
 	} else {
-		printPrepare(p)
+		// Only the target goes to stdout, so `target=$(gb prepare c)` works.
+		printPrepare(os.Stderr, p)
 		if !p.Blocked {
 			fmt.Println(p.Target)
 		}
@@ -416,7 +418,7 @@ func cmdApply(b *core.Buffer, args []string) int {
 	if *asJSON {
 		emitJSON(res)
 	} else {
-		printPrepare(res.Prepare)
+		printPrepare(os.Stdout, res.Prepare)
 		if err == nil {
 			fmt.Printf("applied %s\n", res.Applied[:12])
 		}

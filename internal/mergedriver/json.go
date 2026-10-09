@@ -42,8 +42,29 @@ func MergeJSON(base, ours, theirs []byte) ([]byte, []string, error) {
 		if err := v.Patch(p); err != nil {
 			return nil, nil, err
 		}
+		indentAdded(&v)
 	}
 	return v.Pack(), nil, nil
+}
+
+// indentAdded gives members added by a patch (which hujson inserts with no
+// leading whitespace) the same line break and indent as their predecessor,
+// so the file keeps reading as the user wrote it.
+func indentAdded(v *hujson.Value) {
+	obj, ok := v.Value.(*hujson.Object)
+	if !ok {
+		return
+	}
+	for i := range obj.Members {
+		m := &obj.Members[i]
+		if i > 0 && len(m.Name.BeforeExtra) == 0 {
+			prev := obj.Members[i-1].Name.BeforeExtra
+			if nl := strings.LastIndexByte(string(prev), '\n'); nl >= 0 {
+				m.Name.BeforeExtra = append(hujson.Extra(nil), prev[nl:]...)
+			}
+		}
+		indentAdded(&m.Value)
+	}
 }
 
 type patchOp struct {
@@ -56,7 +77,8 @@ func decodeJSONC(data []byte) (map[string]any, error) {
 	if len(strings.TrimSpace(string(data))) == 0 {
 		return map[string]any{}, nil
 	}
-	std, err := hujson.Standardize(data)
+	// Standardize rewrites its input in place; keep the caller's bytes.
+	std, err := hujson.Standardize(append([]byte(nil), data...))
 	if err != nil {
 		return nil, err
 	}

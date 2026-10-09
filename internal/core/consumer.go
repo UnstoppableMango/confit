@@ -333,7 +333,14 @@ func (b *Buffer) advance(cs Consumer, commit, old gitrepo.Hash, result string) e
 	} else if src.IsZero() || !ok {
 		return fmt.Errorf("%s is not in the history of %s; consumers may only apply commits from their source", short(commit), cs.Source)
 	}
-	if old != commit {
+	if old == commit {
+		// Nothing to move, but the pointer must really be where expected.
+		if cur, err := b.Repo.Resolve(b.Config.appliedRef(cs.Name)); err != nil {
+			return err
+		} else if cur != old {
+			return fmt.Errorf("%w: %s%s is at %s", gitrepo.ErrRefChanged, b.Config.AppliedPrefix, cs.Name, short(cur))
+		}
+	} else {
 		err = b.Repo.UpdateRefs("gb applied advance "+cs.Name, gitrepo.RefUpdate{Name: b.Config.appliedRef(cs.Name), New: commit, Old: old})
 		if err != nil {
 			return err
@@ -379,14 +386,10 @@ func (b *Buffer) syncEditors(cs Consumer, applied gitrepo.Hash) error {
 				if eq {
 					break
 				}
-				files, err := b.Repo.ReadFiles(ac.Tree, a.Path)
-				if err != nil {
-					return err
-				}
-				tree, err := b.Repo.ReplaceSubtree(tc.Tree, a.Path, files)
-				if err != nil {
-					return err
-				}
+				// The applied tree is the right merge result for every path:
+				// the adapter's subtree is now live, and the editor never
+				// changes anything outside it.
+				tree := ac.Tree
 				msg := fmt.Sprintf("%s: live state is now %s, applied by %s\n\n", name, short(applied), cs.Name) +
 					trailers("Buffer-Editor", a.Editor, "Buffer-Applied-By", cs.Name)
 				if next, err = b.Repo.WriteCommit(gitrepo.Commit{Tree: tree, Parents: []gitrepo.Hash{tip, applied},
