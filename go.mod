@@ -1,4 +1,4 @@
-module github.com/UnstoppableMango/git-buffer
+module github.com/UnstoppableMango/confit
 
 go 1.26.0
 

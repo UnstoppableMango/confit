@@ -23,7 +23,7 @@ type Signature struct {
 	When        time.Time
 }
 
-// Commit is what gb writes. Trailers belong in Message.
+// Commit is what confit writes. Trailers belong in Message.
 type Commit struct {
 	Tree      Hash
 	Parents   []Hash
@@ -79,7 +79,7 @@ func (r *Repo) WriteCommit(c Commit) (Hash, error) {
 	return r.r.Storer.SetEncodedObject(obj)
 }
 
-// CommitInfo is the part of a commit gb reads back.
+// CommitInfo is the part of a commit confit reads back.
 type CommitInfo struct {
 	Hash    Hash
 	Tree    Hash

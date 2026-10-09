@@ -11,8 +11,8 @@ import (
 func TestDconfCaptureAndApply(t *testing.T) {
 	// Opt-in, so a developer's real desktop database is never touched; the
 	// keys also live under a root no real application uses. See scripts/test.sh.
-	if os.Getenv("GB_DCONF_TESTS") != "1" {
-		t.Skip("set GB_DCONF_TESTS=1 and run under dbus-run-session (scripts/test.sh)")
+	if os.Getenv("CONFIT_DCONF_TESTS") != "1" {
+		t.Skip("set CONFIT_DCONF_TESTS=1 and run under dbus-run-session (scripts/test.sh)")
 	}
 	write := func(k, v string) {
 		if out, err := exec.Command("dconf", "write", k, v).CombinedOutput(); err != nil {
@@ -27,8 +27,8 @@ func TestDconfCaptureAndApply(t *testing.T) {
 	write("/org/gbtest-core/desktop/interface/font-name", "'Cantarell 11'")
 
 	e := newEnv(t, "")
-	e.git("config", "gitbuffer.adapter.dconf.type", "dconf")
-	e.git("config", "gitbuffer.adapter.dconf.root", "/org/gbtest-core/")
+	e.git("config", "confit.adapter.dconf.type", "dconf")
+	e.git("config", "confit.adapter.dconf.root", "/org/gbtest-core/")
 	e.consumer("nixos", "adopt", "dconf")
 	b := e.open()
 
@@ -44,8 +44,8 @@ func TestDconfCaptureAndApply(t *testing.T) {
 	if err != nil || r.Edit.Summary != "dconf: set /org/gbtest-core/desktop/interface/color-scheme = 'default'" {
 		t.Fatalf("capture: %+v %v", r.Edit, err)
 	}
-	if got := e.git("log", "-1", "--format=%(trailers:key=Buffer-Source,valueonly)", "desired"); got != "unattributed" {
-		t.Fatalf("Buffer-Source = %q", got)
+	if got := e.git("log", "-1", "--format=%(trailers:key=Confit-Source,valueonly)", "desired"); got != "unattributed" {
+		t.Fatalf("Confit-Source = %q", got)
 	}
 
 	// Someone edits desired in git (e.g. by hand) and applies it: the live

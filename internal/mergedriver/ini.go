@@ -37,7 +37,7 @@ func ParseINI(data []byte) (INI, error) {
 	return ini, nil
 }
 
-// Bytes serializes with sections and keys sorted, the stable form gb stores.
+// Bytes serializes with sections and keys sorted, the stable form confit stores.
 func (ini INI) Bytes() []byte {
 	var b strings.Builder
 	sections := make([]string, 0, len(ini))

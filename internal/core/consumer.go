@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/UnstoppableMango/git-buffer/internal/gitrepo"
+	"github.com/UnstoppableMango/confit/internal/gitrepo"
 )
 
 // CommitSummary is one commit in a pending list.
@@ -22,7 +22,7 @@ type FileChange struct {
 	Status string `json:"status"`
 }
 
-// PendingResult is `gb pending`: what the consumer has not applied yet.
+// PendingResult is `confit pending`: what the consumer has not applied yet.
 type PendingResult struct {
 	Consumer string          `json:"consumer"`
 	Source   string          `json:"source"`
@@ -68,7 +68,7 @@ func (b *Buffer) Pending(consumer string) (PendingResult, error) {
 		if err != nil {
 			return res, err
 		}
-		res.Commits = append(res.Commits, CommitSummary{Commit: h.String(), Subject: subject(c.Message), Editor: trailerValue(c.Message, "Buffer-Editor")})
+		res.Commits = append(res.Commits, CommitSummary{Commit: h.String(), Subject: subject(c.Message), Editor: trailerValue(c.Message, "Confit-Editor")})
 	}
 	var fromTree gitrepo.Hash
 	if !applied.IsZero() {
@@ -128,8 +128,8 @@ type PrepareResult struct {
 
 // Prepare captures every adapter the consumer writes, so nothing live is
 // lost, then applies the consumer's drift policy. Target is the commit to
-// apply. Consumers never apply blind: `gb apply` always runs this first, and
-// external consumers (home-manager) run `gb prepare` before switching.
+// apply. Consumers never apply blind: `confit apply` always runs this first, and
+// external consumers (home-manager) run `confit prepare` before switching.
 func (b *Buffer) Prepare(consumer string) (PrepareResult, error) {
 	unlock, err := b.Repo.Lock()
 	if err != nil {
@@ -233,7 +233,7 @@ func (b *Buffer) unaccountedDrift(cs Consumer) ([]string, error) {
 	return names, nil
 }
 
-// ApplyResult is `gb apply`.
+// ApplyResult is `confit apply`.
 type ApplyResult struct {
 	Prepare PrepareResult `json:"prepare"`
 	Applied string        `json:"applied,omitempty"`
@@ -256,7 +256,7 @@ func (b *Buffer) Apply(consumer string, force bool) (ApplyResult, error) {
 		return ApplyResult{}, err
 	}
 	if len(cs.Adapters) == 0 {
-		return ApplyResult{}, fmt.Errorf("consumer %s has no adapters; external consumers apply themselves and then run gb applied advance", consumer)
+		return ApplyResult{}, fmt.Errorf("consumer %s has no adapters; external consumers apply themselves and then run confit applied advance", consumer)
 	}
 	var res ApplyResult
 	if res.Prepare, err = b.prepare(consumer); err != nil {
@@ -294,7 +294,7 @@ func (b *Buffer) Apply(consumer string, force bool) (ApplyResult, error) {
 	return res, nil
 }
 
-// Advance is `gb applied advance`: an external consumer reports that it
+// Advance is `confit applied advance`: an external consumer reports that it
 // applied commit. expect, when non-zero, is the value applied/<consumer>
 // must have now (compare-and-swap).
 func (b *Buffer) Advance(consumer, commit, expect, result string) (string, error) {
@@ -341,13 +341,13 @@ func (b *Buffer) advance(cs Consumer, commit, old gitrepo.Hash, result string) e
 			return fmt.Errorf("%w: %s%s is at %s", gitrepo.ErrRefChanged, b.Config.AppliedPrefix, cs.Name, short(cur))
 		}
 	} else {
-		err = b.Repo.UpdateRefs("gb applied advance "+cs.Name, gitrepo.RefUpdate{Name: b.Config.appliedRef(cs.Name), New: commit, Old: old})
+		err = b.Repo.UpdateRefs("confit applied advance "+cs.Name, gitrepo.RefUpdate{Name: b.Config.appliedRef(cs.Name), New: commit, Old: old})
 		if err != nil {
 			return err
 		}
 	}
 	note := trailers("Consumer", cs.Name, "Applied-At", b.now().UTC().Format("2006-01-02T15:04:05Z"),
-		"Result", result, "Host", b.Config.Host, "Tool", "gb/"+Version)
+		"Result", result, "Host", b.Config.Host, "Tool", "confit/"+Version)
 	if err := b.Repo.AppendNote(notesRef, commit, note, b.committer("apply")); err != nil {
 		return fmt.Errorf("applied pointer moved, but writing the apply note failed: %w", err)
 	}
@@ -391,13 +391,13 @@ func (b *Buffer) syncEditors(cs Consumer, applied gitrepo.Hash) error {
 				// changes anything outside it.
 				tree := ac.Tree
 				msg := fmt.Sprintf("%s: live state is now %s, applied by %s\n\n", name, short(applied), cs.Name) +
-					trailers("Buffer-Editor", a.Editor, "Buffer-Applied-By", cs.Name)
+					trailers("Confit-Editor", a.Editor, "Confit-Applied-By", cs.Name)
 				if next, err = b.Repo.WriteCommit(gitrepo.Commit{Tree: tree, Parents: []gitrepo.Hash{tip, applied},
 					Author: b.human(), Committer: b.committer("apply"), Message: msg}); err != nil {
 					return err
 				}
 			}
-			err = b.Repo.UpdateRefs("gb sync "+a.Editor, gitrepo.RefUpdate{Name: ref, New: next, Old: tip})
+			err = b.Repo.UpdateRefs("confit sync "+a.Editor, gitrepo.RefUpdate{Name: ref, New: next, Old: tip})
 			if errors.Is(err, gitrepo.ErrRefChanged) && attempt < 5 {
 				continue
 			}

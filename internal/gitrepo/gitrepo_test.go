@@ -88,13 +88,13 @@ func TestAppendNoteConcurrent(t *testing.T) {
 			defer wg.Done()
 			rr, _ := Open(r.GitDir) // separate handle, like a separate process
 			sig := Signature{Name: "t", Email: "t@t", When: time.Now()}
-			if err := rr.AppendNote("refs/notes/buffer-applied", c, fmt.Sprintf("Consumer: c%d\n", i), sig); err != nil {
+			if err := rr.AppendNote("refs/notes/confit-applied", c, fmt.Sprintf("Consumer: c%d\n", i), sig); err != nil {
 				t.Error(err)
 			}
 		}(i)
 	}
 	wg.Wait()
-	note, err := r.Git("notes", "--ref=buffer-applied", "show", c.String())
+	note, err := r.Git("notes", "--ref=confit-applied", "show", c.String())
 	if err != nil {
 		t.Fatal(err)
 	}

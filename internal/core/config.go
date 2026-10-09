@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/UnstoppableMango/git-buffer/internal/adapter"
-	"github.com/UnstoppableMango/git-buffer/internal/gitrepo"
+	"github.com/UnstoppableMango/confit/internal/adapter"
+	"github.com/UnstoppableMango/confit/internal/gitrepo"
 )
 
 // DriftPolicy says what a consumer does with live changes it finds before
@@ -20,7 +20,7 @@ const (
 	Block  DriftPolicy = "block"  // refuse to apply until someone decides
 )
 
-// Consumer is `gitbuffer.consumer.<name>.*`.
+// Consumer is `confit.consumer.<name>.*`.
 type Consumer struct {
 	Name     string
 	Source   string   // branch it follows; defaults to the integration branch
@@ -28,22 +28,22 @@ type Consumer struct {
 	Drift    DriftPolicy
 }
 
-// Config is everything under `gitbuffer.*` in the repo's git config. Branch
-// names are configuration: gb never looks at HEAD or a remote's default branch.
+// Config is everything under `confit.*` in the repo's git config. Branch
+// names are configuration: confit never looks at HEAD or a remote's default branch.
 type Config struct {
 	Integration   string // short branch name, default "desired"
 	EditsPrefix   string // default "edits/"
 	AppliedPrefix string // default "applied/"
 	Host          string
-	DriverCommand string // how git invokes gb's merge drivers, default "gb"
+	DriverCommand string // how git invokes confit's merge drivers, default "confit"
 	Adapters      map[string]adapter.Config
 	Consumers     map[string]Consumer
 }
 
-const notesRef = "refs/notes/buffer-applied"
+const notesRef = "refs/notes/confit-applied"
 
 func loadConfig(r *gitrepo.Repo) (Config, error) {
-	raw, err := r.Config("gitbuffer")
+	raw, err := r.Config("confit")
 	if err != nil {
 		return Config{}, err
 	}
@@ -56,11 +56,11 @@ func loadConfig(r *gitrepo.Repo) (Config, error) {
 	}
 	host, _ := os.Hostname()
 	c := Config{
-		Integration:   or(last("gitbuffer.integrationBranch"), "desired"),
-		EditsPrefix:   or(last("gitbuffer.editsPrefix"), "edits/"),
-		AppliedPrefix: or(last("gitbuffer.appliedPrefix"), "applied/"),
-		Host:          or(last("gitbuffer.host"), host),
-		DriverCommand: or(last("gitbuffer.driverCommand"), "gb"),
+		Integration:   or(last("confit.integrationBranch"), "desired"),
+		EditsPrefix:   or(last("confit.editsPrefix"), "edits/"),
+		AppliedPrefix: or(last("confit.appliedPrefix"), "applied/"),
+		Host:          or(last("confit.host"), host),
+		DriverCommand: or(last("confit.driverCommand"), "confit"),
 		Adapters:      map[string]adapter.Config{},
 		Consumers:     map[string]Consumer{},
 	}
@@ -100,7 +100,7 @@ func loadConfig(r *gitrepo.Repo) (Config, error) {
 			case "integrate":
 				a.Integrate = v != "false"
 			}
-			if !hasKey(raw, "gitbuffer.adapter."+name+".integrate") {
+			if !hasKey(raw, "confit.adapter."+name+".integrate") {
 				a.Integrate = true
 			}
 			c.Adapters[name] = a
@@ -130,7 +130,7 @@ func loadConfig(r *gitrepo.Repo) (Config, error) {
 	// An adapter feeding a revert or block consumer must not integrate its
 	// captures on its own, or the drift would be adopted behind the policy.
 	for name, a := range c.Adapters {
-		if hasKey(raw, "gitbuffer.adapter."+name+".integrate") {
+		if hasKey(raw, "confit.adapter."+name+".integrate") {
 			continue
 		}
 		for _, cs := range c.Consumers {

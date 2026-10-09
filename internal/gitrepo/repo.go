@@ -1,4 +1,4 @@
-// Package gitrepo is gb's only door to git.
+// Package gitrepo is confit's only door to git.
 //
 // The split follows the language spike (spike/README.md):
 //   - go-git reads refs and objects and writes blobs, trees and commits.
@@ -34,7 +34,7 @@ type Hash = plumbing.Hash
 // NewHash parses a full hex object id.
 func NewHash(s string) Hash { return plumbing.NewHash(s) }
 
-// Repo is a git repository, bare or not. gb never touches a worktree.
+// Repo is a git repository, bare or not. confit never touches a worktree.
 type Repo struct {
 	GitDir string
 	r      *git.Repository
@@ -245,7 +245,7 @@ func (r *Repo) RevList(args ...string) ([]Hash, error) {
 // Lock takes the per-repository lock that serializes capture and apply. It
 // is an flock, so it is released if the process dies.
 func (r *Repo) Lock() (unlock func(), err error) {
-	f, err := os.OpenFile(filepath.Join(r.GitDir, "gitbuffer.lock"), os.O_CREATE|os.O_RDWR, 0o644)
+	f, err := os.OpenFile(filepath.Join(r.GitDir, "confit.lock"), os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +256,7 @@ func (r *Repo) Lock() (unlock func(), err error) {
 	return func() { f.Close() }, nil
 }
 
-// Config reads every key under section (e.g. "gitbuffer") as
+// Config reads every key under section (e.g. "confit") as
 // lowercased-key -> values, in file order.
 func (r *Repo) Config(section string) (map[string][]string, error) {
 	out, err := r.Git("config", "-z", "--get-regexp", "^"+section+`\.`)

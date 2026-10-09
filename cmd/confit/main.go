@@ -1,4 +1,4 @@
-// Command gb is Git Buffer's CLI, the public contract for editors, adapters
+// Command confit is Confit's CLI, the public contract for editors, adapters
 // and consumers. Every command is one-shot; nothing needs a daemon.
 package main
 
@@ -11,13 +11,13 @@ import (
 	"os"
 	"strings"
 
-	"github.com/UnstoppableMango/git-buffer/internal/adapter"
-	"github.com/UnstoppableMango/git-buffer/internal/core"
-	"github.com/UnstoppableMango/git-buffer/internal/gitrepo"
-	"github.com/UnstoppableMango/git-buffer/internal/mergedriver"
+	"github.com/UnstoppableMango/confit/internal/adapter"
+	"github.com/UnstoppableMango/confit/internal/core"
+	"github.com/UnstoppableMango/confit/internal/gitrepo"
+	"github.com/UnstoppableMango/confit/internal/mergedriver"
 )
 
-const usage = `usage: gb [-C <repo>] <command> [args]
+const usage = `usage: confit [-C <repo>] <command> [args]
 
   init [--bare] [--integration NAME] [--driver-command CMD] [path]
   adapter add <name> --type dconf|file|<external> [--path DIR] [--file [NAME=]PATH]...
@@ -34,7 +34,7 @@ const usage = `usage: gb [-C <repo>] <command> [args]
   merge-driver json|ini %O %A %B [%P]
   version
 
-The repository is -C, else $GB_REPO, else the current directory.
+The repository is -C, else $CONFIT_REPO, else the current directory.
 Exit codes: 0 ok, 1 error, 2 usage, 3 conflict or blocked by drift policy.`
 
 const (
@@ -48,7 +48,7 @@ func main() {
 }
 
 func run(args []string) int {
-	repo := os.Getenv("GB_REPO")
+	repo := os.Getenv("CONFIT_REPO")
 	if repo == "" {
 		repo = "."
 	}
@@ -65,7 +65,7 @@ func run(args []string) int {
 	}
 	switch cmd {
 	case "version":
-		fmt.Println("gb", core.Version)
+		fmt.Println("confit", core.Version)
 		return 0
 	case "help", "-h", "--help":
 		fmt.Println(usage)
@@ -129,13 +129,13 @@ func (m *multi) String() string     { return strings.Join(*m, ",") }
 func (m *multi) Set(v string) error { *m = append(*m, v); return nil }
 
 func usageErr(msg string) int {
-	fmt.Fprintln(os.Stderr, "gb:", msg)
+	fmt.Fprintln(os.Stderr, "confit:", msg)
 	fmt.Fprintln(os.Stderr, usage)
 	return exitUsage
 }
 
 func fail(err error) int {
-	fmt.Fprintln(os.Stderr, "gb:", err)
+	fmt.Fprintln(os.Stderr, "confit:", err)
 	return exitErr
 }
 
@@ -149,7 +149,7 @@ func cmdInit(repo string, args []string) int {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
 	bare := fs.Bool("bare", false, "create a bare repository")
 	integ := fs.String("integration", "", "integration branch name (default desired)")
-	driver := fs.String("driver-command", "", "command git uses to run gb's merge drivers (default gb)")
+	driver := fs.String("driver-command", "", "command git uses to run confit's merge drivers (default confit)")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return exitUsage
@@ -168,7 +168,7 @@ func cmdInit(repo string, args []string) int {
 
 func cmdAdapterAdd(b *core.Buffer, args []string) int {
 	fs := flag.NewFlagSet("adapter add", flag.ContinueOnError)
-	typ := fs.String("type", "", "dconf, file, or the name of an external gb-adapter-<type>")
+	typ := fs.String("type", "", "dconf, file, or the name of an external confit-adapter-<type>")
 	path := fs.String("path", "", "directory in the repo (default: adapter name)")
 	root := fs.String("root", "", "dconf: subtree to manage (default /)")
 	command := fs.String("command", "", "external adapter executable")
@@ -193,7 +193,7 @@ func cmdAdapterAdd(b *core.Buffer, args []string) int {
 		if len(vals) == 0 || vals[0] == "" {
 			continue
 		}
-		if err := b.Repo.SetConfig("gitbuffer.adapter."+name+"."+field, vals...); err != nil {
+		if err := b.Repo.SetConfig("confit.adapter."+name+"."+field, vals...); err != nil {
 			return fail(err)
 		}
 	}
@@ -223,14 +223,14 @@ func cmdConsumerAdd(b *core.Buffer, args []string) int {
 	}
 	name := pos[0]
 	if *source != "" {
-		if err := b.Repo.SetConfig("gitbuffer.consumer."+name+".source", *source); err != nil {
+		if err := b.Repo.SetConfig("confit.consumer."+name+".source", *source); err != nil {
 			return fail(err)
 		}
 	}
-	if err := b.Repo.SetConfig("gitbuffer.consumer."+name+".drift", *drift); err != nil {
+	if err := b.Repo.SetConfig("confit.consumer."+name+".drift", *drift); err != nil {
 		return fail(err)
 	}
-	if err := b.Repo.SetConfig("gitbuffer.consumer."+name+".adapter", adapters...); err != nil {
+	if err := b.Repo.SetConfig("confit.consumer."+name+".adapter", adapters...); err != nil {
 		return fail(err)
 	}
 	fmt.Printf("consumer %s added (drift policy %s)\n", name, *drift)
@@ -308,7 +308,7 @@ func printIntegrate(rs []core.IntegrateResult) int {
 		switch r.Status {
 		case core.Conflict:
 			code = exitConflict
-			fmt.Printf("%s: conflict in %s (left unintegrated; resolve with git and rerun gb integrate)\n", r.Editor, strings.Join(r.Conflicts, ", "))
+			fmt.Printf("%s: conflict in %s (left unintegrated; resolve with git and rerun confit integrate)\n", r.Editor, strings.Join(r.Conflicts, ", "))
 		case core.UpToDate:
 			fmt.Printf("%s: up to date\n", r.Editor)
 		default:
@@ -394,7 +394,7 @@ func cmdPrepare(b *core.Buffer, args []string) int {
 	if *asJSON {
 		emitJSON(p)
 	} else {
-		// Only the target goes to stdout, so `target=$(gb prepare c)` works.
+		// Only the target goes to stdout, so `target=$(confit prepare c)` works.
 		printPrepare(os.Stderr, p)
 		if !p.Blocked {
 			fmt.Println(p.Target)
@@ -424,7 +424,7 @@ func cmdApply(b *core.Buffer, args []string) int {
 		}
 	}
 	if errors.Is(err, core.ErrBlocked) {
-		fmt.Fprintln(os.Stderr, "gb:", err)
+		fmt.Fprintln(os.Stderr, "confit:", err)
 		return exitConflict
 	}
 	if err != nil {
@@ -444,7 +444,7 @@ func cmdAdvance(b *core.Buffer, args []string) int {
 	}
 	h, err := b.Advance(pos[0], pos[1], *expect, *result)
 	if errors.Is(err, gitrepo.ErrRefChanged) {
-		fmt.Fprintln(os.Stderr, "gb: applied pointer moved concurrently:", err)
+		fmt.Fprintln(os.Stderr, "confit: applied pointer moved concurrently:", err)
 		return exitConflict
 	}
 	if err != nil {

@@ -29,7 +29,7 @@ type ConsumerStatus struct {
 	Drift []string `json:"drift"`
 }
 
-// StatusResult is `gb status`.
+// StatusResult is `confit status`.
 type StatusResult struct {
 	Integration string           `json:"integration"`
 	Tip         string           `json:"tip"`
@@ -38,7 +38,7 @@ type StatusResult struct {
 }
 
 // Status reports unintegrated editors, conflicts, pending work and recorded
-// drift. It reads only; run `gb capture` first for up-to-the-moment drift.
+// drift. It reads only; run `confit capture` first for up-to-the-moment drift.
 func (b *Buffer) Status() (StatusResult, error) {
 	tip, err := b.integrationTip()
 	if err != nil {

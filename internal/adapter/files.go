@@ -49,7 +49,7 @@ func (f *Files) Apply(files map[string][]byte) error {
 		if err := os.MkdirAll(filepath.Dir(live), 0o755); err != nil {
 			return err
 		}
-		tmp, err := os.CreateTemp(filepath.Dir(live), "."+filepath.Base(live)+".gb-*")
+		tmp, err := os.CreateTemp(filepath.Dir(live), "."+filepath.Base(live)+".confit-*")
 		if err != nil {
 			return err
 		}

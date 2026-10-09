@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/UnstoppableMango/git-buffer/internal/mergedriver"
+	"github.com/UnstoppableMango/confit/internal/mergedriver"
 )
 
 // rootFile holds keys that sit directly in the managed root.

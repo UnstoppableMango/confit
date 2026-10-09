@@ -1,4 +1,4 @@
-// Package adapter connects gb to a live system. Every adapter is two one-shot
+// Package adapter connects confit to a live system. Every adapter is two one-shot
 // operations: Snapshot reads the whole live state as files, and Apply makes
 // the live state match a set of files. There is no event stream to miss:
 // capture always compares whole states.
@@ -20,15 +20,15 @@ type Adapter interface {
 	Apply(files map[string][]byte) error
 }
 
-// Config is an adapter's settings from `gitbuffer.adapter.<name>.*`.
+// Config is an adapter's settings from `confit.adapter.<name>.*`.
 type Config struct {
 	Name    string
-	Type    string   // dconf, file, or anything else for gb-adapter-<type>
+	Type    string   // dconf, file, or anything else for confit-adapter-<type>
 	Path    string   // directory in the repo; defaults to the name
 	Editor  string   // editor branch suffix; defaults to <name>@<host>
 	Files   []string // file: "live/path" or "repo/name=live/path"
 	Root    string   // dconf: subtree to manage, default "/"
-	Command string   // external: executable, default gb-adapter-<type>
+	Command string   // external: executable, default confit-adapter-<type>
 	// Integrate controls whether capture merges this editor into the
 	// integration branch right away. Defaults to true.
 	Integrate bool
@@ -64,7 +64,7 @@ func New(c Config) (Adapter, error) {
 	default:
 		cmd := c.Command
 		if cmd == "" {
-			cmd = "gb-adapter-" + c.Type
+			cmd = "confit-adapter-" + c.Type
 		}
 		return &External{Command: cmd, Name: c.Name}, nil
 	}
@@ -79,7 +79,7 @@ type External struct {
 
 func (e *External) run(verb, dir string) error {
 	cmd := exec.Command(e.Command, verb, dir)
-	cmd.Env = append(os.Environ(), "GB_ADAPTER="+e.Name)
+	cmd.Env = append(os.Environ(), "CONFIT_ADAPTER="+e.Name)
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("%s %s: %w", e.Command, verb, err)
@@ -88,7 +88,7 @@ func (e *External) run(verb, dir string) error {
 }
 
 func (e *External) Snapshot() (map[string][]byte, error) {
-	dir, err := os.MkdirTemp("", "gb-snapshot-")
+	dir, err := os.MkdirTemp("", "confit-snapshot-")
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +100,7 @@ func (e *External) Snapshot() (map[string][]byte, error) {
 }
 
 func (e *External) Apply(files map[string][]byte) error {
-	dir, err := os.MkdirTemp("", "gb-apply-")
+	dir, err := os.MkdirTemp("", "confit-apply-")
 	if err != nil {
 		return err
 	}

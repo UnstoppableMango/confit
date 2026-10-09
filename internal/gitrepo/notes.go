@@ -7,7 +7,7 @@ import (
 )
 
 // AppendNote appends text to the note on target under notesRef (for example
-// refs/notes/buffer-applied), creating it if needed. It never uses
+// refs/notes/confit-applied), creating it if needed. It never uses
 // `git notes add`, which drops notes under concurrent writers; instead it
 // writes the notes commit itself and moves the ref by compare-and-swap.
 func (r *Repo) AppendNote(notesRef string, target Hash, text string, sig Signature) error {
@@ -56,11 +56,11 @@ func (r *Repo) AppendNote(notesRef string, target Hash, text string, sig Signatu
 			return err
 		}
 		c, err := r.WriteCommit(Commit{Tree: newTree, Parents: parents, Author: sig, Committer: sig,
-			Message: "Notes added by gb\n"})
+			Message: "Notes added by confit\n"})
 		if err != nil {
 			return err
 		}
-		err = r.UpdateRefs("gb: note", RefUpdate{Name: notesRef, New: c, Old: old})
+		err = r.UpdateRefs("confit: note", RefUpdate{Name: notesRef, New: c, Old: old})
 		if errors.Is(err, ErrRefChanged) {
 			continue
 		}

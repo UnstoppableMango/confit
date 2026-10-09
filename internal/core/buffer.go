@@ -1,4 +1,4 @@
-// Package core implements Git Buffer's model on top of plain git: editor
+// Package core implements Confit's model on top of plain git: editor
 // branches, the integration branch, applied pointers moved only by
 // compare-and-swap, and apply records in notes. See design/git-buffer-design.md.
 package core
@@ -11,21 +11,21 @@ import (
 	"strings"
 	"time"
 
-	"github.com/UnstoppableMango/git-buffer/internal/adapter"
-	"github.com/UnstoppableMango/git-buffer/internal/gitrepo"
+	"github.com/UnstoppableMango/confit/internal/adapter"
+	"github.com/UnstoppableMango/confit/internal/gitrepo"
 )
 
 // Version is stamped into trailers and apply notes.
 var Version = "0.1.0-dev"
 
-// Buffer is an opened Git Buffer repository.
+// Buffer is an opened Confit repository.
 type Buffer struct {
 	Repo   *gitrepo.Repo
 	Config Config
 	now    func() time.Time
 }
 
-// Open opens the repository containing path and loads its gitbuffer config.
+// Open opens the repository containing path and loads its confit config.
 func Open(path string) (*Buffer, error) {
 	r, err := gitrepo.Open(path)
 	if err != nil {
@@ -38,14 +38,14 @@ func Open(path string) (*Buffer, error) {
 	return &Buffer{Repo: r, Config: cfg, now: time.Now}, nil
 }
 
-// InitOptions configures `gb init`.
+// InitOptions configures `confit init`.
 type InitOptions struct {
 	Bare          bool
 	Integration   string // default "desired"
-	DriverCommand string // default "gb"
+	DriverCommand string // default "confit"
 }
 
-const gitattributes = "*.json merge=gb-json\n*.ini merge=gb-ini\n"
+const gitattributes = "*.json merge=confit-json\n*.ini merge=confit-ini\n"
 
 // Init creates the repository if needed, registers the merge drivers (git
 // config is not cloned, so this runs on every clone too) and creates the
@@ -69,12 +69,12 @@ func Init(path string, opts InitOptions) (*Buffer, error) {
 		return nil, err
 	}
 	if opts.Integration != "" {
-		if err := r.SetConfig("gitbuffer.integrationBranch", opts.Integration); err != nil {
+		if err := r.SetConfig("confit.integrationBranch", opts.Integration); err != nil {
 			return nil, err
 		}
 	}
 	if opts.DriverCommand != "" {
-		if err := r.SetConfig("gitbuffer.driverCommand", opts.DriverCommand); err != nil {
+		if err := r.SetConfig("confit.driverCommand", opts.DriverCommand); err != nil {
 			return nil, err
 		}
 	}
@@ -83,10 +83,10 @@ func Init(path string, opts InitOptions) (*Buffer, error) {
 		return nil, err
 	}
 	for _, kind := range []string{"json", "ini"} {
-		if err := r.SetConfig("merge.gb-"+kind+".name", "git-buffer "+kind+" merge"); err != nil {
+		if err := r.SetConfig("merge.confit-"+kind+".name", "confit "+kind+" merge"); err != nil {
 			return nil, err
 		}
-		if err := r.SetConfig("merge.gb-"+kind+".driver", b.Config.DriverCommand+" merge-driver "+kind+" %O %A %B %P"); err != nil {
+		if err := r.SetConfig("merge.confit-"+kind+".driver", b.Config.DriverCommand+" merge-driver "+kind+" %O %A %B %P"); err != nil {
 			return nil, err
 		}
 	}
@@ -108,11 +108,11 @@ func Init(path string, opts InitOptions) (*Buffer, error) {
 		return nil, err
 	}
 	c, err := r.WriteCommit(gitrepo.Commit{Tree: tree, Author: b.human(), Committer: b.committer("init"),
-		Message: "gb: initialize\n\nBuffer-Version: " + Version + "\n"})
+		Message: "confit: initialize\n\nConfit-Version: " + Version + "\n"})
 	if err != nil {
 		return nil, err
 	}
-	return b, r.UpdateRefs("gb init", gitrepo.RefUpdate{Name: b.Config.integrationRef(), New: c})
+	return b, r.UpdateRefs("confit init", gitrepo.RefUpdate{Name: b.Config.integrationRef(), New: c})
 }
 
 // human is the author of edits: git's user.name/email, else the login user.
@@ -130,15 +130,15 @@ func (b *Buffer) human() gitrepo.Signature {
 	return gitrepo.Signature{Name: name, Email: email, When: b.now()}
 }
 
-// committer is Git Buffer itself, naming the component that wrote the commit.
+// committer is Confit itself, naming the component that wrote the commit.
 func (b *Buffer) committer(component string) gitrepo.Signature {
-	return gitrepo.Signature{Name: "git-buffer (" + component + ")", Email: "git-buffer@" + b.Config.Host, When: b.now()}
+	return gitrepo.Signature{Name: "confit (" + component + ")", Email: "confit@" + b.Config.Host, When: b.now()}
 }
 
 func (b *Buffer) adapter(name string) (adapter.Config, adapter.Adapter, error) {
 	cfg, ok := b.Config.Adapters[name]
 	if !ok {
-		return cfg, nil, fmt.Errorf("no adapter %q (configure gitbuffer.adapter.%s.type)", name, name)
+		return cfg, nil, fmt.Errorf("no adapter %q (configure confit.adapter.%s.type)", name, name)
 	}
 	a, err := adapter.New(cfg)
 	return cfg, a, err

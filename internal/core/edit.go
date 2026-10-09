@@ -7,9 +7,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/UnstoppableMango/git-buffer/internal/adapter"
-	"github.com/UnstoppableMango/git-buffer/internal/gitrepo"
-	"github.com/UnstoppableMango/git-buffer/internal/mergedriver"
+	"github.com/UnstoppableMango/confit/internal/adapter"
+	"github.com/UnstoppableMango/confit/internal/gitrepo"
+	"github.com/UnstoppableMango/confit/internal/mergedriver"
 )
 
 // EditResult describes one commit (or no-op) on an editor branch.
@@ -22,7 +22,7 @@ type EditResult struct {
 	Keys    []string `json:"keys,omitempty"`
 }
 
-// CaptureResult is the outcome of `gb capture`.
+// CaptureResult is the outcome of `confit capture`.
 type CaptureResult struct {
 	Adapter    string           `json:"adapter"`
 	Edit       EditResult       `json:"edit"`
@@ -35,7 +35,7 @@ type editRequest struct {
 	files     map[string][]byte
 	label     string // summary prefix: adapter or editor name
 	component string // committer component, e.g. "dconf"
-	source    string // Buffer-Source trailer
+	source    string // Confit-Source trailer
 	session   string
 	message   string              // overrides the generated summary line
 	keyName   func(string) string // renders changed keys for messages
@@ -79,18 +79,18 @@ func (b *Buffer) commitEdit(req editRequest) (EditResult, error) {
 			summary = req.message
 		}
 		msg := summary + "\n\n" + trailers(
-			"Buffer-Editor", req.editor,
-			"Buffer-Adapter", req.component+"/"+Version,
-			"Buffer-Source", req.source,
-			"Buffer-Session", req.session,
-			"Buffer-Keys", joinKeys(keys),
+			"Confit-Editor", req.editor,
+			"Confit-Adapter", req.component+"/"+Version,
+			"Confit-Source", req.source,
+			"Confit-Session", req.session,
+			"Confit-Keys", joinKeys(keys),
 		)
 		c, err := b.Repo.WriteCommit(gitrepo.Commit{Tree: tree, Parents: []gitrepo.Hash{parent},
 			Author: b.human(), Committer: b.committer(req.component), Message: msg})
 		if err != nil {
 			return res, err
 		}
-		err = b.Repo.UpdateRefs("gb: "+summary, gitrepo.RefUpdate{Name: ref, New: c, Old: tip})
+		err = b.Repo.UpdateRefs("confit: "+summary, gitrepo.RefUpdate{Name: ref, New: c, Old: tip})
 		if errors.Is(err, gitrepo.ErrRefChanged) {
 			continue
 		}
@@ -136,7 +136,7 @@ func (b *Buffer) editorBase(adapterName string) func() (gitrepo.Hash, error) {
 func (b *Buffer) integrationTip() (gitrepo.Hash, error) {
 	tip, err := b.Repo.Resolve(b.Config.integrationRef())
 	if err == nil && tip.IsZero() {
-		err = fmt.Errorf("branch %s does not exist; run gb init", b.Config.Integration)
+		err = fmt.Errorf("branch %s does not exist; run confit init", b.Config.Integration)
 	}
 	return tip, err
 }
@@ -186,8 +186,8 @@ func (b *Buffer) capture(name string, integrate bool) (CaptureResult, error) {
 	return res, nil
 }
 
-// EditOptions is `gb edit commit`: an editor hands gb the full content of
-// its directory and gb records the difference.
+// EditOptions is `confit edit commit`: an editor hands confit the full content of
+// its directory and confit records the difference.
 type EditOptions struct {
 	Prefix    string
 	Files     map[string][]byte

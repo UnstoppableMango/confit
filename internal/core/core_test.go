@@ -10,19 +10,19 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/UnstoppableMango/git-buffer/internal/gitrepo"
+	"github.com/UnstoppableMango/confit/internal/gitrepo"
 )
 
-// gbBinary is built once so git can run gb's merge drivers during tests.
+// gbBinary is built once so git can run confit's merge drivers during tests.
 var gbBinary string
 
 func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "gb-test-bin-")
+	dir, err := os.MkdirTemp("", "confit-test-bin-")
 	if err != nil {
 		panic(err)
 	}
-	gbBinary = filepath.Join(dir, "gb")
-	if out, err := exec.Command("go", "build", "-buildvcs=false", "-o", gbBinary, "../../cmd/gb").CombinedOutput(); err != nil {
+	gbBinary = filepath.Join(dir, "confit")
+	if out, err := exec.Command("go", "build", "-buildvcs=false", "-o", gbBinary, "../../cmd/confit").CombinedOutput(); err != nil {
 		panic(string(out))
 	}
 	code := m.Run()
@@ -70,15 +70,15 @@ func (e *env) fileAdapter(name, content string) string {
 	if content != "" {
 		writeFile(e.t, live, content)
 	}
-	e.git("config", "gitbuffer.adapter."+name+".type", "file")
-	e.git("config", "gitbuffer.adapter."+name+".file", "settings.json="+live)
+	e.git("config", "confit.adapter."+name+".type", "file")
+	e.git("config", "confit.adapter."+name+".file", "settings.json="+live)
 	return live
 }
 
 func (e *env) consumer(name, policy string, adapters ...string) {
-	e.git("config", "gitbuffer.consumer."+name+".drift", policy)
+	e.git("config", "confit.consumer."+name+".drift", policy)
 	for _, a := range adapters {
-		e.git("config", "--add", "gitbuffer.consumer."+name+".adapter", a)
+		e.git("config", "--add", "confit.consumer."+name+".adapter", a)
 	}
 }
 
@@ -122,13 +122,13 @@ func TestCaptureCommitsOnlyChangesWithTrailers(t *testing.T) {
 		t.Fatalf("summary: %+v %v", r.Edit, err)
 	}
 	host := b.Config.Host
-	if got := e.git("log", "-1", "--format=%(trailers:key=Buffer-Editor,valueonly)", "desired"); got != "vscode@"+host {
-		t.Fatalf("Buffer-Editor trailer = %q", got)
+	if got := e.git("log", "-1", "--format=%(trailers:key=Confit-Editor,valueonly)", "desired"); got != "vscode@"+host {
+		t.Fatalf("Confit-Editor trailer = %q", got)
 	}
-	if got := e.git("log", "-1", "--format=%(trailers:key=Buffer-Keys,valueonly)", "desired"); got != "editor.fontSize" {
-		t.Fatalf("Buffer-Keys trailer = %q", got)
+	if got := e.git("log", "-1", "--format=%(trailers:key=Confit-Keys,valueonly)", "desired"); got != "editor.fontSize" {
+		t.Fatalf("Confit-Keys trailer = %q", got)
 	}
-	if got := e.git("log", "-1", "--format=%cn", "desired"); got != "git-buffer (file)" {
+	if got := e.git("log", "-1", "--format=%cn", "desired"); got != "confit (file)" {
 		t.Fatalf("committer = %q", got)
 	}
 	if !strings.Contains(e.show("desired", "vscode/settings.json"), "// keep me") {
@@ -329,7 +329,7 @@ func TestAdvanceRules(t *testing.T) {
 	if _, err := b.Advance("hm", r2.Edit.Commit, r1.Edit.Commit, "ok"); err != nil {
 		t.Fatal(err)
 	}
-	note := e.git("notes", "--ref=buffer-applied", "show", r2.Edit.Commit)
+	note := e.git("notes", "--ref=confit-applied", "show", r2.Edit.Commit)
 	if !strings.Contains(note, "Consumer: hm") || !strings.Contains(note, "Result: ok") {
 		t.Fatalf("note: %s", note)
 	}

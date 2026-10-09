@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/UnstoppableMango/git-buffer/internal/gitrepo"
+	"github.com/UnstoppableMango/confit/internal/gitrepo"
 )
 
 // Integration outcomes.
@@ -65,7 +65,7 @@ func (b *Buffer) editors() ([]string, error) {
 }
 
 // integrate does one editor; caller holds the lock. The integration branch
-// only moves by compare-and-swap, so a concurrent writer outside gb (a person
+// only moves by compare-and-swap, so a concurrent writer outside confit (a person
 // running git) makes us retry rather than lose their commit.
 func (b *Buffer) integrate(editor string) (IntegrateResult, error) {
 	res := IntegrateResult{Editor: editor}
@@ -100,7 +100,7 @@ func (b *Buffer) integrate(editor string) (IntegrateResult, error) {
 				return res, nil
 			}
 			msg := fmt.Sprintf("Integrate %s%s into %s\n\n", b.Config.EditsPrefix, editor, b.Config.Integration) +
-				trailers("Buffer-Integrated", editor)
+				trailers("Confit-Integrated", editor)
 			next, err = b.Repo.WriteCommit(gitrepo.Commit{Tree: m.Tree, Parents: []gitrepo.Hash{target, tip},
 				Author: b.human(), Committer: b.committer("integrate"), Message: msg})
 			if err != nil {
@@ -108,7 +108,7 @@ func (b *Buffer) integrate(editor string) (IntegrateResult, error) {
 			}
 			res.Status = Merged
 		}
-		err = b.Repo.UpdateRefs("gb integrate "+editor, gitrepo.RefUpdate{Name: b.Config.integrationRef(), New: next, Old: target})
+		err = b.Repo.UpdateRefs("confit integrate "+editor, gitrepo.RefUpdate{Name: b.Config.integrationRef(), New: next, Old: target})
 		if errors.Is(err, gitrepo.ErrRefChanged) {
 			continue
 		}

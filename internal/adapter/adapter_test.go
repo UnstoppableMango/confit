@@ -12,8 +12,8 @@ import (
 // scripts/test.sh runs them against a private one under dbus-run-session.
 func needDconf(t *testing.T) {
 	t.Helper()
-	if os.Getenv("GB_DCONF_TESTS") != "1" {
-		t.Skip("set GB_DCONF_TESTS=1 and run under dbus-run-session (scripts/test.sh)")
+	if os.Getenv("CONFIT_DCONF_TESTS") != "1" {
+		t.Skip("set CONFIT_DCONF_TESTS=1 and run under dbus-run-session (scripts/test.sh)")
 	}
 }
 
@@ -102,7 +102,7 @@ func TestExternalAdapter(t *testing.T) {
 	dir := t.TempDir()
 	state := filepath.Join(dir, "state.txt")
 	os.WriteFile(state, []byte("v1\n"), 0o644)
-	script := filepath.Join(dir, "gb-adapter-test")
+	script := filepath.Join(dir, "confit-adapter-test")
 	os.WriteFile(script, []byte(`#!/bin/sh
 set -e
 case "$1" in
