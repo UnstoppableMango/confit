@@ -1,4 +1,4 @@
-# Confit (`confit`)
+# confit
 
 Confit records every configuration change a UI makes as a git commit, lets consumers (home-manager, NixOS, scripts) apply those commits later, and records what each consumer applied. Git is the only state. Every command is one-shot, so nothing needs a daemon.
 
