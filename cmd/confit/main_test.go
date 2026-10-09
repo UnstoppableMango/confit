@@ -68,5 +68,6 @@ func TestCLI(t *testing.T) {
 	if len(st.Consumers) != 1 || len(st.Consumers[0].Drift) != 0 {
 		t.Fatalf("status: %+v", st)
 	}
+	confit(1, "integrate", "no-such-editor") // an error, not a panic
 	confit(2, "bogus")
 }

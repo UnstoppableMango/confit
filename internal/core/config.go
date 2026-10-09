@@ -160,8 +160,16 @@ func loadConfig(r *gitrepo.Repo) (Config, error) {
 	return c, nil
 }
 
+// hasKey looks up section.subsection.variable as git reports it: section and
+// variable lowercased, the subsection as written.
 func hasKey(raw map[string][]string, key string) bool {
-	_, ok := raw[strings.ToLower(key)]
+	first, last := strings.Index(key, "."), strings.LastIndex(key, ".")
+	if first >= 0 && last > first {
+		key = strings.ToLower(key[:first]) + key[first:last] + strings.ToLower(key[last:])
+	} else {
+		key = strings.ToLower(key)
+	}
+	_, ok := raw[key]
 	return ok
 }
 

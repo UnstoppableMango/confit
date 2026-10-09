@@ -1,6 +1,6 @@
 // Package core implements Confit's model on top of plain git: editor
 // branches, the integration branch, applied pointers moved only by
-// compare-and-swap, and apply records in notes. See design/git-buffer-design.md.
+// compare-and-swap, and apply records in notes. See docs/design.md.
 package core
 
 import (

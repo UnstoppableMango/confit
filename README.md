@@ -2,7 +2,7 @@
 
 Confit records every configuration change a UI makes as a git commit, lets consumers (home-manager, NixOS, scripts) apply those commits later, and records what each consumer applied. Git is the only state. Every command is one-shot, so nothing needs a daemon.
 
-Design: `../design/git-buffer-design.md`. Language choice: `../spike/README.md`.
+Design: [docs/design.md](docs/design.md). Language choice: [docs/language-spike.md](docs/language-spike.md).
 
 Status: step 3 of the plan (core library and CLI). Not used on a real desktop yet; that is step 4.
 
@@ -38,7 +38,7 @@ A consumer that confit can apply through its adapters runs `confit apply <consum
 | `confit init [--bare] [--integration NAME] [path]` | Creates the repo, registers the merge drivers in git config, and creates the integration branch with a `.gitattributes`. Run it on every clone, since git config isn't cloned. |
 | `confit adapter add` / `confit consumer add` | Write `confit.adapter.*` / `confit.consumer.*` git config. |
 | `confit capture <adapter>` | Snapshot live state, commit the difference to `edits/<editor>`, integrate. No difference means no commit. |
-| `confit edit commit <editor> --dir D [--prefix P]` | For UIs and extensions that hand confit their files directly. |
+| `confit edit commit <editor> --dir D --prefix P` | For UIs and extensions that hand confit their files directly. |
 | `confit integrate [<editor>...]` | Merge editor branches into the integration branch. A conflicting editor is reported and left out; the others still integrate. |
 | `confit pending <consumer>` | Commits in `applied/<consumer>..<source>` and the tree diff. |
 | `confit prepare <consumer>` | Drift check: capture the consumer's adapters, apply its drift policy, print the commit to apply. |

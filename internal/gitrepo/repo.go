@@ -1,6 +1,6 @@
 // Package gitrepo is confit's only door to git.
 //
-// The split follows the language spike (spike/README.md):
+// The split follows the language spike (docs/language-spike.md):
 //   - go-git reads refs and objects and writes blobs, trees and commits.
 //   - every ref write goes through `git update-ref --stdin`, because go-git's
 //     own compare-and-swap is not safe against concurrent git processes.

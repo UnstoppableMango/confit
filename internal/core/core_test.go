@@ -394,3 +394,48 @@ func mustAtoi(s string) int {
 	}
 	return n
 }
+
+func TestAdoptBeforeAnyLiveState(t *testing.T) {
+	e := newEnv(t, "")
+	live := e.fileAdapter("vscode", "") // fresh machine: no live file yet
+	e.consumer("hm", "adopt", "vscode")
+	b := e.open()
+	if _, err := b.EditCommit("ui", EditOptions{Prefix: "vscode", Files: map[string][]byte{"settings.json": []byte(settings)}, Integrate: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Apply("hm", false); err != nil {
+		t.Fatalf("first apply: %v", err)
+	}
+	if readFile(t, live) != settings {
+		t.Fatal("apply did not write the live file")
+	}
+}
+
+func TestAdapterIntegrateSettingKeepsSubsectionCase(t *testing.T) {
+	e := newEnv(t, "")
+	e.fileAdapter("VSCode", settings)
+	e.fileAdapter("Tweaks", settings)
+	e.git("config", "confit.adapter.VSCode.integrate", "false")
+	e.git("config", "confit.adapter.Tweaks.integrate", "true")
+	e.consumer("hm", "block", "Tweaks")
+	b := e.open()
+	if b.Config.Adapters["VSCode"].Integrate {
+		t.Error("explicit integrate=false ignored for a mixed-case adapter")
+	}
+	if !b.Config.Adapters["Tweaks"].Integrate {
+		t.Error("explicit integrate=true overridden by the block policy for a mixed-case adapter")
+	}
+}
+
+func TestEditCommitNeedsPrefix(t *testing.T) {
+	e := newEnv(t, "")
+	b := e.open()
+	for _, prefix := range []string{"", "/"} {
+		if _, err := b.EditCommit("ui", EditOptions{Prefix: prefix, Files: map[string][]byte{"x.json": []byte("{}")}}); err == nil {
+			t.Errorf("prefix %q: want an error, the edit would replace the whole tree", prefix)
+		}
+	}
+	if e.git("ls-tree", "--name-only", "desired") != ".gitattributes" {
+		t.Fatal("desired changed")
+	}
+}

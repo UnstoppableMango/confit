@@ -24,7 +24,7 @@ const usage = `usage: confit [-C <repo>] <command> [args]
                      [--root /dconf/root/] [--command CMD] [--editor NAME] [--no-integrate]
   consumer add <name> [--source BRANCH] [--adapter NAME]... [--drift adopt|revert|block]
   capture <adapter> [--no-integrate] [--json]
-  edit commit <editor> --dir DIR [--prefix PATH] [--message MSG] [--session ID] [--no-integrate] [--json]
+  edit commit <editor> --dir DIR --prefix PATH [--message MSG] [--session ID] [--no-integrate] [--json]
   integrate [<editor>...] [--json]
   pending <consumer> [--json]
   prepare <consumer> [--json]
@@ -278,7 +278,7 @@ func conflictCode(r *core.IntegrateResult) int {
 func cmdEditCommit(b *core.Buffer, args []string) int {
 	fs := flag.NewFlagSet("edit commit", flag.ContinueOnError)
 	dir := fs.String("dir", "", "directory holding the editor's full content")
-	prefix := fs.String("prefix", "", "path in the repo the directory maps to")
+	prefix := fs.String("prefix", "", "path in the repo the directory maps to (required)")
 	msg := fs.String("message", "", "commit summary (default: generated)")
 	session := fs.String("session", "", "groups commits from one UI session")
 	noInt := fs.Bool("no-integrate", false, "commit to the editor branch only")
@@ -311,6 +311,8 @@ func printIntegrate(rs []core.IntegrateResult) int {
 			fmt.Printf("%s: conflict in %s (left unintegrated; resolve with git and rerun confit integrate)\n", r.Editor, strings.Join(r.Conflicts, ", "))
 		case core.UpToDate:
 			fmt.Printf("%s: up to date\n", r.Editor)
+		case "":
+			// failed before an outcome; the caller reports the error
 		default:
 			fmt.Printf("%s: %s -> %s\n", r.Editor, r.Status, r.Commit[:12])
 		}

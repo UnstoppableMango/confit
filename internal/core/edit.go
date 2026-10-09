@@ -199,6 +199,9 @@ type EditOptions struct {
 // EditCommit is the generic editor entry point used by UIs and adapters
 // that write their own files (for example a VSCode extension).
 func (b *Buffer) EditCommit(editor string, opts EditOptions) (CaptureResult, error) {
+	if strings.Trim(opts.Prefix, "/") == "" {
+		return CaptureResult{}, fmt.Errorf("edit commit needs a prefix; without one the edit would replace the whole tree")
+	}
 	unlock, err := b.Repo.Lock()
 	if err != nil {
 		return CaptureResult{}, err

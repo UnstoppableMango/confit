@@ -157,7 +157,13 @@ func (b *Buffer) prepare(consumer string) (PrepareResult, error) {
 	switch cs.Drift {
 	case Adopt:
 		for _, name := range cs.Adapters {
-			ir, err := b.integrate(b.Config.Adapters[name].Editor)
+			editor := b.Config.Adapters[name].Editor
+			if tip, err := b.Repo.Resolve(b.Config.editRef(editor)); err != nil {
+				return res, err
+			} else if tip.IsZero() {
+				continue // nothing captured yet, so no drift to adopt
+			}
+			ir, err := b.integrate(editor)
 			if err != nil {
 				return res, err
 			}
