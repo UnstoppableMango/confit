@@ -47,14 +47,7 @@ func New(c Config) (Adapter, error) {
 		}
 		return &Dconf{Root: root}, nil
 	case "file":
-		f := &Files{Map: map[string]string{}}
-		for _, spec := range c.Files {
-			name, live, ok := strings.Cut(spec, "=")
-			if !ok {
-				live, name = spec, filepath.Base(spec)
-			}
-			f.Map[name] = live
-		}
+		f := &Files{Map: FileMap(c.Files)}
 		if len(f.Map) == 0 {
 			return nil, fmt.Errorf("adapter %s: type file needs at least one file", c.Name)
 		}
@@ -68,6 +61,20 @@ func New(c Config) (Adapter, error) {
 		}
 		return &External{Command: cmd, Name: c.Name}, nil
 	}
+}
+
+// FileMap parses file adapter specs ("live/path" or "repo/name=live/path")
+// into repo name -> live path.
+func FileMap(specs []string) map[string]string {
+	m := map[string]string{}
+	for _, spec := range specs {
+		name, live, ok := strings.Cut(spec, "=")
+		if !ok {
+			live, name = spec, filepath.Base(spec)
+		}
+		m[name] = live
+	}
+	return m
 }
 
 // External runs `<command> snapshot <dir>` and `<command> apply <dir>`, in

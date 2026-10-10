@@ -28,6 +28,15 @@
       systems = import inputs.systems;
       imports = with inputs; [ treefmt-nix.flakeModule ];
 
+      flake.homeManagerModules.default =
+        { lib, pkgs, ... }:
+        {
+          imports = [ ./nix/hm-module.nix ];
+          services.confit.package =
+            lib.mkDefault
+              inputs.self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+        };
+
       perSystem =
         { pkgs, system, ... }:
         let

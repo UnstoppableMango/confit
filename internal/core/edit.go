@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -63,18 +64,19 @@ func (b *Buffer) commitEdit(req editRequest) (EditResult, error) {
 		if err != nil {
 			return res, err
 		}
-		tree, err := b.Repo.ReplaceSubtree(pc.Tree, req.prefix, req.files)
+		before, err := b.Repo.ReadFiles(pc.Tree, req.prefix)
+		if err != nil {
+			return res, err
+		}
+		files := keepEquivalent(before, req.files)
+		tree, err := b.Repo.ReplaceSubtree(pc.Tree, req.prefix, files)
 		if err != nil {
 			return res, err
 		}
 		if tree == pc.Tree {
 			return res, nil
 		}
-		before, err := b.Repo.ReadFiles(pc.Tree, req.prefix)
-		if err != nil {
-			return res, err
-		}
-		keys, summary := describe(req, before, req.files)
+		keys, summary := describe(req, before, files)
 		if req.message != "" {
 			summary = req.message
 		}
@@ -101,6 +103,25 @@ func (b *Buffer) commitEdit(req editRequest) (EditResult, error) {
 		return res, nil
 	}
 	return res, fmt.Errorf("%s kept changing; giving up", ref)
+}
+
+// keepEquivalent keeps the committed bytes of any INI file whose keys and
+// values didn't change. A snapshot serializes dconf in its own order, so
+// without this a hand-edited file in git (keys in another order) would come
+// back from the next capture as a no-op "update" commit.
+func keepEquivalent(before, after map[string][]byte) map[string][]byte {
+	out := make(map[string][]byte, len(after))
+	for p, data := range after {
+		out[p] = data
+		old, ok := before[p]
+		if !ok || !strings.HasSuffix(p, ".ini") || bytes.Equal(old, data) {
+			continue
+		}
+		if keys, _, err := mergedriver.INIKeys(old, data); err == nil && len(keys) == 0 {
+			out[p] = old
+		}
+	}
+	return out
 }
 
 // editorBase is where a new editor branch for an adapter starts: the last

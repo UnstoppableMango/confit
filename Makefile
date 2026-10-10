@@ -1,6 +1,6 @@
 GO_SRC ?= $(shell find . -name '*.go')
 
-.PHONY: build test test-all update check lint format fmt tidy
+.PHONY: build test test-all e2e-home-manager update check lint format fmt tidy
 
 build:
 	nix build .#
@@ -11,6 +11,10 @@ test:
 # Also runs the dconf adapter tests against a throwaway database.
 test-all:
 	bash scripts/test.sh
+
+# Real home-manager switches with the module, in a throwaway HOME.
+e2e-home-manager:
+	e2e/home-manager/run.sh
 
 update:
 	nix flake update

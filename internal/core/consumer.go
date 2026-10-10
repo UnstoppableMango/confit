@@ -201,16 +201,19 @@ func (b *Buffer) prepare(consumer string) (PrepareResult, error) {
 
 // unaccountedDrift names the consumer's adapters whose last observed live
 // state differs from what the consumer last applied (or, before any apply,
-// from what it is about to apply).
+// from what it is about to apply) and that nobody has integrated into the
+// consumer's source.
 func (b *Buffer) unaccountedDrift(cs Consumer) ([]string, error) {
+	src, err := b.Repo.Resolve(b.Config.sourceRef(cs))
+	if err != nil {
+		return nil, err
+	}
 	baseline, err := b.Repo.Resolve(b.Config.appliedRef(cs.Name))
 	if err != nil {
 		return nil, err
 	}
 	if baseline.IsZero() {
-		if baseline, err = b.Repo.Resolve(b.Config.sourceRef(cs)); err != nil {
-			return nil, err
-		}
+		baseline = src
 	}
 	bc, err := b.Repo.ReadCommit(baseline)
 	if err != nil {
@@ -232,7 +235,14 @@ func (b *Buffer) unaccountedDrift(cs Consumer) ([]string, error) {
 		}
 		if eq, err := b.Repo.SubtreeEqual(tc.Tree, bc.Tree, a.Path); err != nil {
 			return nil, err
-		} else if !eq {
+		} else if eq {
+			continue
+		}
+		// Drift someone chose to keep by integrating it is accounted for:
+		// the source already contains it, so the apply reproduces it.
+		if kept, err := b.Repo.IsAncestor(tip, src); err != nil {
+			return nil, err
+		} else if !kept {
 			names = append(names, name)
 		}
 	}
@@ -389,8 +399,23 @@ func (b *Buffer) syncEditors(cs Consumer, applied gitrepo.Hash) error {
 				if err != nil {
 					return err
 				}
+				// Skip only when history already connects the two. Equal
+				// content alone isn't enough: an editor branch that never
+				// shared history with the applied commit (captured before
+				// the first apply, under a non-adopt policy) would later
+				// merge with the root as its base and conflict on its own
+				// unchanged files.
 				if eq {
-					break
+					linked, err := b.Repo.IsAncestor(tip, applied)
+					if err == nil && !linked {
+						linked, err = b.Repo.IsAncestor(applied, tip)
+					}
+					if err != nil {
+						return err
+					}
+					if linked {
+						break
+					}
 				}
 				// The applied tree is the right merge result for every path:
 				// the adapter's subtree is now live, and the editor never
