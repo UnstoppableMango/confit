@@ -16,6 +16,7 @@ build() {
     in
     (import ./e2e/home-manager/generation.nix {
       pkgs = flake.inputs.nixpkgs.legacyPackages.\${system};
+      inherit (flake.inputs.home-manager.lib) homeManagerConfiguration;
       module = flake.homeManagerModules.default;
       confit = flake.packages.\${system}.default;
       user = \"$USER\";

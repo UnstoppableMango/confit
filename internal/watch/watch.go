@@ -141,7 +141,8 @@ func fileWatch(ctx context.Context, paths []string, changed func()) error {
 	f := os.NewFile(uintptr(fd), "inotify")
 	defer f.Close()
 	names := map[int]map[string]bool{}
-	const mask = unix.IN_CLOSE_WRITE | unix.IN_MOVED_TO | unix.IN_CREATE | unix.IN_DELETE | unix.IN_MOVED_FROM | unix.IN_ATTRIB
+	const mask = unix.IN_CLOSE_WRITE | unix.IN_MOVED_TO | unix.IN_CREATE | unix.IN_DELETE | unix.IN_MOVED_FROM | unix.IN_ATTRIB |
+		unix.IN_DELETE_SELF | unix.IN_MOVE_SELF
 	for _, p := range paths {
 		dir := filepath.Dir(p)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
