@@ -15,6 +15,12 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # Only the home-manager e2e (e2e/home-manager) uses it.
+    home-manager = {
+      url = "github:nix-community/home-manager";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     gomod2nix = {
       url = "github:nix-community/gomod2nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -27,6 +33,15 @@
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = import inputs.systems;
       imports = with inputs; [ treefmt-nix.flakeModule ];
+
+      flake.homeManagerModules.default =
+        { lib, pkgs, ... }:
+        {
+          imports = [ ./nix/hm-module.nix ];
+          services.confit.package =
+            lib.mkDefault
+              inputs.self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+        };
 
       perSystem =
         { pkgs, system, ... }:

@@ -3,18 +3,24 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/UnstoppableMango/confit/internal/adapter"
 	"github.com/UnstoppableMango/confit/internal/core"
 	"github.com/UnstoppableMango/confit/internal/gitrepo"
 	"github.com/UnstoppableMango/confit/internal/mergedriver"
+	"github.com/UnstoppableMango/confit/internal/watch"
 )
 
 const usage = `usage: confit [-C <repo>] <command> [args]
@@ -24,6 +30,7 @@ const usage = `usage: confit [-C <repo>] <command> [args]
                      [--root /dconf/root/] [--command CMD] [--editor NAME] [--no-integrate]
   consumer add <name> [--source BRANCH] [--adapter NAME]... [--drift adopt|revert|block]
   capture <adapter> [--no-integrate] [--json]
+  watch <adapter> [--quiet DURATION]
   edit commit <editor> --dir DIR --prefix PATH [--message MSG] [--session ID] [--no-integrate] [--json]
   integrate [<editor>...] [--json]
   pending <consumer> [--json]
@@ -89,6 +96,8 @@ func run(args []string) int {
 		return cmdConsumerAdd(b, args)
 	case "capture":
 		return cmdCapture(b, args)
+	case "watch":
+		return cmdWatch(b, repo, args)
 	case "edit commit":
 		return cmdEditCommit(b, args)
 	case "integrate":
@@ -266,6 +275,46 @@ func cmdCapture(b *core.Buffer, args []string) int {
 		return conflictCode(res.Integrated)
 	}
 	return printCapture(res)
+}
+
+// cmdWatch is the optional trigger: it runs `confit capture` after each burst
+// of live changes. The capture is a separate process, so the watcher holds no
+// git state and a crash in either loses nothing.
+func cmdWatch(b *core.Buffer, repo string, args []string) int {
+	fs := flag.NewFlagSet("watch", flag.ContinueOnError)
+	quiet := fs.Duration("quiet", 2*time.Second, "capture once the system has been unchanged this long")
+	pos, err := parse(fs, args)
+	if err != nil || len(pos) != 1 {
+		return usageErr("watch <adapter>")
+	}
+	cfg, ok := b.Config.Adapters[pos[0]]
+	if !ok {
+		return fail(fmt.Errorf("no adapter %q", pos[0]))
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return fail(err)
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	err = watch.Run(ctx, cfg, watch.Options{
+		Quiet: *quiet,
+		Capture: func() error {
+			cmd := exec.Command(self, "-C", repo, "capture", cfg.Name)
+			cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+			err := cmd.Run()
+			var exit *exec.ExitError
+			if errors.As(err, &exit) && exit.ExitCode() == exitConflict {
+				return nil // reported by capture; the editor waits for a human
+			}
+			return err
+		},
+		Log: func(format string, args ...any) { fmt.Fprintf(os.Stderr, "confit watch: "+format+"\n", args...) },
+	})
+	if err != nil {
+		return fail(err)
+	}
+	return 0
 }
 
 func conflictCode(r *core.IntegrateResult) int {

@@ -247,8 +247,8 @@ func TestDriftRevert(t *testing.T) {
 		t.Fatalf("status still reports drift after revert: %+v", st.Consumers[0])
 	}
 	// Integrating that branch later must not resurrect the reverted value.
-	if _, err := b.Integrate("vscode@" + b.Config.Host); err != nil {
-		t.Fatal(err)
+	if rs, err := b.Integrate("vscode@" + b.Config.Host); err != nil || rs[0].Status == Conflict {
+		t.Fatalf("integrate: %+v %v", rs, err)
 	}
 	if strings.Contains(e.show("desired", "vscode/settings.json"), "18") {
 		t.Fatal("integrating after revert resurrected the drift")
@@ -283,6 +283,55 @@ func TestDriftBlock(t *testing.T) {
 	}
 	if _, err := b.Apply("hm", false); err != nil {
 		t.Fatalf("after force, apply should be unblocked: %v", err)
+	}
+}
+
+// Integrating blocked drift is how a human keeps it; the next apply must
+// then go through and reproduce it.
+func TestDriftBlockKeptByIntegrate(t *testing.T) {
+	e := newEnv(t, "")
+	live := e.fileAdapter("vscode", settings)
+	e.consumer("hm", "block", "vscode")
+	b := e.open()
+	b.EditCommit("seed", EditOptions{Prefix: "vscode", Files: map[string][]byte{"settings.json": []byte(settings)}, Integrate: true})
+	if _, err := b.Apply("hm", false); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, live, strings.Replace(settings, "12", "18", 1))
+	if _, err := b.Apply("hm", false); !errors.Is(err, ErrBlocked) {
+		t.Fatalf("want ErrBlocked, got %v", err)
+	}
+	if rs, err := b.Integrate("vscode@" + b.Config.Host); err != nil || rs[0].Status == Conflict {
+		t.Fatalf("integrate: %+v %v", rs, err)
+	}
+	if _, err := b.Apply("hm", false); err != nil {
+		t.Fatalf("apply after integrating the drift: %v", err)
+	}
+	if !strings.Contains(readFile(t, live), "18") {
+		t.Fatal("the kept drift was discarded")
+	}
+}
+
+// A file in git whose keys are in a different order than a snapshot
+// produces (a hand edit) is not rewritten by the next capture.
+func TestCaptureKeepsEquivalentINI(t *testing.T) {
+	e := newEnv(t, "")
+	b := e.open()
+	hand := "[desktop/interface]\nclock-show-seconds=true\ncolor-scheme='prefer-dark'\n"
+	sorted := "[desktop/interface]\ncolor-scheme='prefer-dark'\nclock-show-seconds=true\n"
+	edit := func(content string) EditResult {
+		r, err := b.EditCommit("dconf@test", EditOptions{Prefix: "dconf", Files: map[string][]byte{"desktop/interface.ini": []byte(content)}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.Edit
+	}
+	edit(hand)
+	if r := edit(sorted); r.Changed {
+		t.Fatalf("reordering keys committed %q", r.Summary)
+	}
+	if r := edit(strings.Replace(sorted, "true", "false", 1)); !r.Changed {
+		t.Fatal("a real change was dropped")
 	}
 }
 

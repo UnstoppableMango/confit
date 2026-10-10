@@ -4,7 +4,25 @@ Confit records every configuration change a UI makes as a git commit, lets consu
 
 Design: [docs/design.md](docs/design.md). Language choice: [docs/language-spike.md](docs/language-spike.md).
 
-Status: step 3 of the plan (core library and CLI). Not used on a real desktop yet; that is step 4.
+Status: step 4 of the plan. The core runs end to end against VSCode settings and GNOME (dconf) with home-manager as the consumer; see [docs/end-to-end.md](docs/end-to-end.md) for what ran and what it found.
+
+## With home-manager
+
+The flake exports a Home Manager module. home-manager becomes a consumer: every `home-manager switch` captures live changes first, applies the drift policy, writes the integration branch to the live systems and records the apply. Between switches, systemd starts captures: a `.path` unit for files, `confit watch` for dconf, and an hourly timer.
+
+```nix
+{
+  imports = [ inputs.confit.homeManagerModules.default ];
+  services.confit = {
+    enable = true;
+    vscode.enable = true;   # ~/.config/Code/User/settings.json
+    dconf.enable = true;    # /org/gnome/
+    # drift = "adopt";      # or "revert" / "block"
+  };
+}
+```
+
+Don't also set `programs.vscode.userSettings`: that makes `settings.json` a read-only Nix store link, and the settings UI can't save. Keys in `dconf.settings` keep working; a switch records a UI change to one of them before home-manager overwrites it.
 
 ## Quick start
 
@@ -38,6 +56,7 @@ A consumer that confit can apply through its adapters runs `confit apply <consum
 | `confit init [--bare] [--integration NAME] [path]` | Creates the repo, registers the merge drivers in git config, and creates the integration branch with a `.gitattributes`. Run it on every clone, since git config isn't cloned. |
 | `confit adapter add` / `confit consumer add` | Write `confit.adapter.*` / `confit.consumer.*` git config. |
 | `confit capture <adapter>` | Snapshot live state, commit the difference to `edits/<editor>`, integrate. No difference means no commit. |
+| `confit watch <adapter> [--quiet 2s]` | Optional trigger for dconf and file adapters: captures once, then runs `confit capture` after each burst of changes once the system has been quiet. Holds no state. |
 | `confit edit commit <editor> --dir D --prefix P` | For UIs and extensions that hand confit their files directly. |
 | `confit integrate [<editor>...]` | Merge editor branches into the integration branch. A conflicting editor is reported and left out; the others still integrate. |
 | `confit pending <consumer>` | Commits in `applied/<consumer>..<source>` and the tree diff. |
@@ -72,8 +91,8 @@ Every command takes `-C <repo>` (or `$CONFIT_REPO`). Most take `--json`. Exit co
 
 ## Not built yet
 
-- `confit watch` (the tiny debounce-and-exec trigger), commit debouncing and session squashing. Step 4 will need these for dconf.
-- systemd `.path`/timer units and a home-manager module, planned for step 4. The package itself builds with `nix build`.
+- Session squashing on integration. `confit watch` debouncing already turns a slider drag into one commit.
+- A NixOS module (system-wide dconf, other system consumers). The home-manager module covers the user side.
 - k8s-style keyed list merges (`name` keys) in the JSON driver.
 - Pushing to a remote. The design's open question 1 (one repo per machine or shared) is still open.
 
@@ -83,7 +102,7 @@ Every command takes `-C <repo>` (or `$CONFIT_REPO`). Most take `--json`. Exit co
 
 ```sh
 make test        # go test ./...; dconf tests skip themselves
-make test-all    # everything, with a throwaway dconf on a private D-Bus
+make test-all    # everything, with a throwaway dconf on a private D-Bus, including the e2e desktop scenario
 make build       # nix build .#, which also runs the tests
 make check       # nix flake check: gofmt, nixfmt, actionlint
 make tidy        # after changing go.mod: go mod tidy and regenerate nix/gomod2nix.toml
