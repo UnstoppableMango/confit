@@ -1,0 +1,4 @@
+/result*
+*.local
+.direnv/
+bin/
