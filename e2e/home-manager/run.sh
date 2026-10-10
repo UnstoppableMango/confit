@@ -25,5 +25,8 @@ build() {
 generation=$(build generation)
 gsettings=$(build gsettings)
 
-env -i HOME="$home" USER="$USER" PATH="$gsettings/bin:$PATH" TERM=dumb \
+# An empty XDG_RUNTIME_DIR keeps the switch away from the machine's real
+# systemd user manager, which would be asked to start this HOME's units.
+mkdir -m 700 "$root/run"
+env -i HOME="$home" USER="$USER" XDG_RUNTIME_DIR="$root/run" PATH="$gsettings/bin:$PATH" TERM=dumb \
   scripts/dbus-session.sh bash e2e/home-manager/scenario.sh "$generation"

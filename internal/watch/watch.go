@@ -173,8 +173,13 @@ func fileWatch(ctx context.Context, paths []string, changed func()) error {
 			ev := (*unix.InotifyEvent)(unsafe.Pointer(&buf[off]))
 			nameBytes := buf[off+unix.SizeofInotifyEvent : off+unix.SizeofInotifyEvent+int(ev.Len)]
 			off += unix.SizeofInotifyEvent + int(ev.Len)
-			name := string(trimNul(nameBytes))
-			if names[int(ev.Wd)][name] {
+			switch {
+			case ev.Mask&unix.IN_Q_OVERFLOW != 0:
+				changed() // events were lost; a capture compares whole states anyway
+			case ev.Mask&(unix.IN_IGNORED|unix.IN_DELETE_SELF|unix.IN_MOVE_SELF) != 0:
+				// The directory is gone; exit so systemd restarts the watch.
+				return errors.New("watched directory was removed or moved")
+			case names[int(ev.Wd)][string(trimNul(nameBytes))]:
 				changed()
 			}
 		}
