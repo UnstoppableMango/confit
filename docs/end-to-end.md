@@ -22,13 +22,11 @@ Two scenarios run in CI on every PR (the `e2e` job, which feeds `required`). Bot
 
 Where GSettings with the GNOME schemas is available, the test uses `gsettings`, the same path GNOME Settings and Tweaks take. In the Nix dev shell it writes the same keys with `dconf write` instead, and logs that it did.
 
-**`e2e/home-manager/`** (`make e2e-home-manager`) builds a real home-manager generation with the new module (`services.confit`, with VSCode and dconf enabled, plus one key in `dconf.settings`) and runs real `activate` switches in a throwaway HOME:
+**`e2e/home-manager/`** (`make e2e-home-manager`) builds a real home-manager generation with the new module (`services.confit`, with VSCode and dconf enabled, plus one key in `dconf.settings`) and runs real `activate` switches in a throwaway HOME. It checks only what the module adds:
 
-1. First switch on an existing desktop: the repo is created, the live state is captured, and `applied/home-manager@e2e` = `desired`.
-2. A VSCode edit and two Tweaks changes are captured the way the systemd units run them (`confit capture vscode` from the `.path` unit, `confit watch dconf` from the service). The two Tweaks changes become one commit.
-3. A change made while nothing watched is adopted by the next switch, and an apply note is written.
-4. Tweaks changes `button-layout`, which home-manager also declares. The switch records the UI change first, and then home-manager's value wins.
-5. A switch with nothing new moves no branch.
+1. The first switch captures the existing desktop and applies, so `applied/home-manager@e2e` = `desired`.
+2. A Tweaks change to a key that home-manager also declares is recorded before home-manager overwrites it.
+3. A switch with nothing new moves no branch.
 
 ## Bugs it found (fixed in this PR)
 
