@@ -26,4 +26,4 @@ generation=$(build generation)
 gsettings=$(build gsettings)
 
 env -i HOME="$home" USER="$USER" PATH="$gsettings/bin:$PATH" TERM=dumb \
-  dbus-run-session -- bash e2e/home-manager/scenario.sh "$generation"
+  scripts/dbus-session.sh bash e2e/home-manager/scenario.sh "$generation"
