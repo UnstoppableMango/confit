@@ -71,12 +71,12 @@ The editor branch for a capture is `edits/<adapter>@<host>`, as today. When the 
 
 ## Sync (8, 9)
 
-1. **Fetch** `desired`, `edits/*`, `applied/*` and the notes ref from `confit.remote` before every capture and apply. Failure to reach the remote is a warning, not an error.
+1. **Fetch** `desired`, `edits/*`, `applied/*` and `refs/notes/confit-applied/*` from `confit.remote` before every capture and apply. Failure to reach the remote is a warning, not an error.
 2. **Capture and integrate** locally, as today.
-3. **Push** `desired`, this host's editor branches, its applied pointer and the notes. On a rejected `desired`, fetch, integrate again, and retry a few times. A real conflict is recorded the way it is today and isn't pushed.
-4. **Notes** from several hosts are merged with `git notes merge -s cat_sort_uniq`, so concurrent apply notes don't reject each other.
+3. **Push** `desired`, this host's editor branches, its applied pointer and its notes ref. On a rejected `desired`, fetch, integrate again, and retry a few times. A real conflict is recorded the way it is today and isn't pushed.
+4. **Apply notes** move to a notes ref per host, `refs/notes/confit-applied/<host>`. Each host writes only its own, so notes never need merging. A line-based merge such as `cat_sort_uniq` would split the multi-line apply records.
 
-Applied pointers and editor branches are per host, so only `desired` and the notes ref see contention.
+Applied pointers, editor branches and notes refs are all per host, so only `desired` sees contention.
 
 ## home-manager module (1, 2, 14)
 
@@ -90,5 +90,5 @@ Each stage is one PR, with review between stages:
 
 1. **Manifest and layers**, on one host. Add the `confit.toml` loader, replacing adapter and consumer git config. Add the allowlist, layer routing, per-key overlay for dconf and top-level JSON, and host self-registration. Core tests cover each.
 2. **History.** Start edits from `desired`, skip no-op apply notes, and name consumers per host.
-3. **Sync.** Add fetch and push with retry, offline behaviour and the notes merge. Tests use two clones sharing one bare remote.
+3. **Sync.** Add fetch and push with retry, offline behaviour and per-host notes refs. Tests use two clones sharing one bare remote.
 4. **Module and end to end.** Slim the module and add the manifest-reading `confit watch --all`. Extend the home-manager e2e to two hosts (two HOMEs) sharing a bare remote, covering a shared change reaching both hosts and a local change staying put.
