@@ -215,13 +215,13 @@ func cmdAdapterAdd(b *core.Buffer, args []string) int {
 			f := false
 			ma.Integrate = &f
 		}
+		// A new host first tracks the shared layer of the adapters the repo
+		// already has, as it would had it registered on its own.
+		m.SeedHost(host)
 		if m.Adapters == nil {
 			m.Adapters = map[string]core.ManifestAdapter{}
 		}
 		m.Adapters[name] = ma
-		if m.Hosts == nil {
-			m.Hosts = map[string]core.ManifestHost{}
-		}
 		h := m.Hosts[host]
 		if h.Track == nil {
 			h.Track = map[string]core.Selector{}
@@ -284,9 +284,7 @@ func cmdConsumerAdd(b *core.Buffer, args []string) int {
 	}
 	name, host := pos[0], b.Config.Host
 	_, err = b.UpdateManifest("consumer "+name, func(m *core.Manifest) error {
-		if m.Hosts == nil {
-			m.Hosts = map[string]core.ManifestHost{}
-		}
+		m.SeedHost(host)
 		h := m.Hosts[host]
 		if h.Consumers == nil {
 			h.Consumers = map[string]core.ManifestConsumer{}

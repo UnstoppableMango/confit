@@ -90,6 +90,9 @@ func (s Selector) MarshalTOML() ([]byte, error) {
 	if s.Shared {
 		return []byte(`"shared"`), nil
 	}
+	if len(s.Prefixes) == 0 {
+		return []byte("[]"), nil
+	}
 	var b bytes.Buffer
 	if err := toml.NewEncoder(&b).Encode(map[string][]string{"x": s.Prefixes}); err != nil {
 		return nil, err
@@ -131,7 +134,9 @@ func ParseManifest(data []byte) (Manifest, error) {
 func (m Manifest) Bytes() ([]byte, error) {
 	var b bytes.Buffer
 	b.WriteString("# confit manifest; see docs/multi-host.md\n\n")
-	err := toml.NewEncoder(&b).Encode(m)
+	enc := toml.NewEncoder(&b)
+	enc.Indent = ""
+	err := enc.Encode(m)
 	return b.Bytes(), err
 }
 
@@ -186,6 +191,12 @@ func (b *Buffer) updateManifest(summary string, edit func(*Manifest) error) (boo
 		if bytes.Equal(before, after) {
 			return false, b.loadManifest(m)
 		}
+		// A manifest this host can't load must not reach the shared branch,
+		// or every command would fail on Open until someone fixes it by hand.
+		probe := *b
+		if err := probe.loadManifest(m); err != nil {
+			return false, err
+		}
 		tc, err := b.Repo.ReadCommit(tip)
 		if err != nil {
 			return false, err
@@ -239,20 +250,26 @@ func (b *Buffer) register() error {
 		return nil
 	}
 	_, err := b.updateManifest("register host "+b.Config.Host, func(m *Manifest) error {
-		if _, ok := m.Hosts[b.Config.Host]; ok {
-			return nil
-		}
-		h := ManifestHost{Track: map[string]Selector{}}
-		for name := range m.Adapters {
-			h.Track[name] = Selector{Shared: true}
-		}
-		if m.Hosts == nil {
-			m.Hosts = map[string]ManifestHost{}
-		}
-		m.Hosts[b.Config.Host] = h
+		m.SeedHost(b.Config.Host)
 		return nil
 	})
 	return err
+}
+
+// SeedHost adds host to the manifest when it is missing, tracking only the
+// shared layer of every adapter (decision 16). A known host is left as is.
+func (m *Manifest) SeedHost(host string) {
+	if _, ok := m.Hosts[host]; ok {
+		return
+	}
+	h := ManifestHost{Track: map[string]Selector{}}
+	for name := range m.Adapters {
+		h.Track[name] = Selector{Shared: true}
+	}
+	if m.Hosts == nil {
+		m.Hosts = map[string]ManifestHost{}
+	}
+	m.Hosts[host] = h
 }
 
 // expandHome resolves a leading ~/ against the current user's home.

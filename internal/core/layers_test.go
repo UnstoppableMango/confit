@@ -211,3 +211,31 @@ func TestUnknownHostRegisters(t *testing.T) {
 		t.Fatalf("capture: %+v %v", r.Edit, err)
 	}
 }
+
+func TestEmptySelectorRoundTrips(t *testing.T) {
+	m := Manifest{Hosts: map[string]ManifestHost{"laptop": {Track: map[string]Selector{"vscode": {}}}}}
+	data, err := m.Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseManifest(data); err != nil {
+		t.Fatalf("%v\n%s", err, data)
+	}
+}
+
+// An invalid manifest edit is refused before it reaches the integration branch.
+func TestInvalidManifestIsNotCommitted(t *testing.T) {
+	e := newEnv(t, "")
+	before := e.git("rev-parse", "desired")
+	_, err := e.open().UpdateManifest("bad", func(m *Manifest) error {
+		m.Adapters = map[string]ManifestAdapter{"x": {Type: "file", Path: "hosts/laptop/x"}}
+		m.Hosts = map[string]ManifestHost{"laptop": {Track: map[string]Selector{"x": all()}}}
+		return nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "reserved") {
+		t.Fatalf("err = %v", err)
+	}
+	if e.git("rev-parse", "desired") != before {
+		t.Fatal("invalid manifest was committed")
+	}
+}

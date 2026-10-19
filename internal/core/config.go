@@ -91,7 +91,7 @@ func (b *Buffer) loadManifest(m Manifest) error {
 		ma := m.Adapters[name]
 		a := adapter.Config{Name: name, Type: ma.Type, Path: or(strings.Trim(ma.Path, "/"), name),
 			Editor: name + "@" + c.Host, Root: ma.Root, Command: ma.Command, Integrate: true}
-		if a.Path == hostsDir {
+		if a.Path == hostsDir || strings.HasPrefix(a.Path, hostsDir+"/") {
 			return fmt.Errorf("adapter %s: path %q is reserved for host layers", name, hostsDir)
 		}
 		for _, repoName := range sortedKeys(ma.Files) {

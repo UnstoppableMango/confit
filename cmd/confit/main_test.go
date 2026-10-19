@@ -68,6 +68,13 @@ func TestCLI(t *testing.T) {
 	if len(st.Consumers) != 1 || len(st.Consumers[0].Drift) != 0 {
 		t.Fatalf("status: %+v", st)
 	}
+	// A second host joining through the CLI tracks the shared layer of the
+	// adapters it didn't add itself.
+	exec.Command("git", "-C", repo, "config", "confit.host", "desktop").Run()
+	confit(0, "adapter", "add", "other", "--type", "file", "--file", "o.json="+filepath.Join(dir, "o.json"))
+	if out, _ := exec.Command("git", "-C", repo, "show", "desired:confit.toml").Output(); !strings.Contains(string(out), "[hosts.desktop.track]\nother = [\"*\"]\nvscode = \"shared\"\n") {
+		t.Fatalf("manifest:\n%s", out)
+	}
 	confit(1, "integrate", "no-such-editor") // an error, not a panic
 	confit(2, "bogus")
 }
