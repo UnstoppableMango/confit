@@ -31,9 +31,10 @@ type CaptureResult struct {
 }
 
 type editRequest struct {
-	editor    string
-	prefix    string
-	files     map[string][]byte
+	editor string
+	// build returns the new contents of each prefix it replaces, given the
+	// tree the edit is based on.
+	build     func(tree gitrepo.Hash) (map[string]map[string][]byte, error)
 	label     string // summary prefix: adapter or editor name
 	component string // committer component, e.g. "dconf"
 	source    string // Confit-Source trailer
@@ -41,9 +42,12 @@ type editRequest struct {
 	message   string              // overrides the generated summary line
 	keyName   func(string) string // renders changed keys for messages
 	base      func() (gitrepo.Hash, error)
+	// onto, when set, may move the parent forward to the integration tip
+	// (docs/multi-host.md, decision 3).
+	onto func(parent gitrepo.Hash) (gitrepo.Hash, error)
 }
 
-// commitEdit replaces prefix on the editor branch with files. When the
+// commitEdit replaces each prefix req.build returns on the editor branch. When the
 // result equals the branch tip's tree it does nothing: identical trees mean
 // no drift, so no diffing is needed. Caller holds the repo lock.
 func (b *Buffer) commitEdit(req editRequest) (EditResult, error) {
@@ -60,23 +64,36 @@ func (b *Buffer) commitEdit(req editRequest) (EditResult, error) {
 				return res, err
 			}
 		}
+		if req.onto != nil {
+			if parent, err = req.onto(parent); err != nil {
+				return res, err
+			}
+		}
 		pc, err := b.Repo.ReadCommit(parent)
 		if err != nil {
 			return res, err
 		}
-		before, err := b.Repo.ReadFiles(pc.Tree, req.prefix)
+		layers, err := req.build(pc.Tree)
 		if err != nil {
 			return res, err
 		}
-		files := keepEquivalent(before, req.files)
-		tree, err := b.Repo.ReplaceSubtree(pc.Tree, req.prefix, files)
-		if err != nil {
-			return res, err
+		tree := pc.Tree
+		var changes []keyChange
+		for _, prefix := range sortedKeys(layers) {
+			before, err := b.Repo.ReadFiles(pc.Tree, prefix)
+			if err != nil {
+				return res, err
+			}
+			files := keepEquivalent(before, layers[prefix])
+			if tree, err = b.Repo.ReplaceSubtree(tree, prefix, files); err != nil {
+				return res, err
+			}
+			changes = append(changes, changedKeys(req, before, files)...)
 		}
 		if tree == pc.Tree {
 			return res, nil
 		}
-		keys, summary := describe(req, before, files)
+		keys, summary := describe(req.label, changes)
 		if req.message != "" {
 			summary = req.message
 		}
@@ -154,6 +171,36 @@ func (b *Buffer) editorBase(adapterName string) func() (gitrepo.Hash, error) {
 	}
 }
 
+// ontoIntegration starts a capture from the integration tip instead of the
+// editor's own tip when nothing is lost by it: the editor's history is all
+// integrated and its layers already match. The capture then integrates as a
+// fast-forward, one commit per change, and commits on the integration branch
+// that don't touch this adapter (manifest edits, other adapters) don't force
+// a merge.
+func (b *Buffer) ontoIntegration(cfg adapter.Config) func(gitrepo.Hash) (gitrepo.Hash, error) {
+	return func(parent gitrepo.Hash) (gitrepo.Hash, error) {
+		tip, err := b.integrationTip()
+		if err != nil || tip == parent {
+			return parent, err
+		}
+		if ok, err := b.Repo.IsAncestor(parent, tip); err != nil || !ok {
+			return parent, err
+		}
+		pc, err := b.Repo.ReadCommit(parent)
+		if err != nil {
+			return parent, err
+		}
+		tc, err := b.Repo.ReadCommit(tip)
+		if err != nil {
+			return parent, err
+		}
+		if eq, err := b.layersEqual(pc.Tree, tc.Tree, cfg); err != nil || !eq {
+			return parent, err
+		}
+		return tip, nil
+	}
+}
+
 func (b *Buffer) integrationTip() (gitrepo.Hash, error) {
 	tip, err := b.Repo.Resolve(b.Config.integrationRef())
 	if err == nil && tip.IsZero() {
@@ -170,6 +217,9 @@ func (b *Buffer) Capture(name string, integrate bool) (CaptureResult, error) {
 		return CaptureResult{}, err
 	}
 	defer unlock()
+	if err := b.refresh(); err != nil {
+		return CaptureResult{}, err
+	}
 	cfg, _, err := b.adapter(name)
 	if err != nil {
 		return CaptureResult{}, err
@@ -183,13 +233,51 @@ func (b *Buffer) capture(name string, integrate bool) (CaptureResult, error) {
 	if err != nil {
 		return res, err
 	}
-	files, err := a.Snapshot()
+	liveFiles, err := a.Snapshot()
 	if err != nil {
 		return res, err
 	}
+	t := b.Config.Tracking[name]
+	live, err := t.unitize(liveFiles)
+	if err != nil {
+		return res, err
+	}
+	// "shared" tracking follows the integration branch's layers, which an
+	// editor branch based on an older commit may not have yet.
+	tip, err := b.integrationTip()
+	if err != nil {
+		return res, err
+	}
+	tc, err := b.Repo.ReadCommit(tip)
+	if err != nil {
+		return res, err
+	}
+	integrated, err := b.readLayers(cfg, tc.Tree)
+	if err != nil {
+		return res, err
+	}
+	known := union(integrated.sharedUnits, integrated.hostUnits)
+	// Each tracked unit goes to the layer it belongs to; untracked ones,
+	// live or committed, are left alone.
+	build := func(tree gitrepo.Hash) (map[string]map[string][]byte, error) {
+		l, err := b.readLayers(cfg, tree)
+		if err != nil {
+			return nil, err
+		}
+		shared, host := t.route(live, l.sharedUnits, l.hostUnits, known)
+		out := map[string]map[string][]byte{}
+		if out[cfg.Path], err = t.compose(shared, []map[string][]byte{liveFiles, l.shared}, l.shared, liveFiles); err != nil {
+			return nil, err
+		}
+		if out[b.Config.hostPath(cfg)], err = t.compose(host, []map[string][]byte{liveFiles, l.host}, l.host, liveFiles); err != nil {
+			return nil, err
+		}
+		return out, nil
+	}
 	req := editRequest{
-		editor: cfg.Editor, prefix: cfg.Path, files: files, label: name,
+		editor: cfg.Editor, build: build, label: name,
 		component: cfg.Type, source: "unattributed", base: b.editorBase(name),
+		onto: b.ontoIntegration(cfg),
 	}
 	if d, ok := a.(*adapter.Dconf); ok {
 		req.keyName = d.KeyPath
@@ -230,7 +318,10 @@ func (b *Buffer) EditCommit(editor string, opts EditOptions) (CaptureResult, err
 	defer unlock()
 	res := CaptureResult{}
 	res.Edit, err = b.commitEdit(editRequest{
-		editor: editor, prefix: opts.Prefix, files: opts.Files, label: editor,
+		editor: editor, label: editor,
+		build: func(gitrepo.Hash) (map[string]map[string][]byte, error) {
+			return map[string]map[string][]byte{strings.Trim(opts.Prefix, "/"): opts.Files}, nil
+		},
 		component: "edit", session: opts.Session, message: opts.Message,
 		base: b.integrationTip,
 	})
@@ -242,9 +333,15 @@ func (b *Buffer) EditCommit(editor string, opts EditOptions) (CaptureResult, err
 	return res, err
 }
 
-// describe produces the changed keys and a one-line summary, e.g.
-// "vscode: set editor.fontSize = 14".
-func describe(req editRequest, before, after map[string][]byte) ([]string, string) {
+// keyChange is one changed key; value is empty for opaque files.
+type keyChange struct {
+	key, value string
+	removed    bool
+}
+
+// changedKeys lists the keys that differ between two versions of an
+// adapter's files.
+func changedKeys(req editRequest, before, after map[string][]byte) []keyChange {
 	paths := map[string]bool{}
 	for p := range before {
 		paths[p] = true
@@ -252,9 +349,7 @@ func describe(req editRequest, before, after map[string][]byte) ([]string, strin
 	for p := range after {
 		paths[p] = true
 	}
-	var keys []string
-	values := map[string]string{}
-	removed := map[string]bool{}
+	var keys []keyChange
 	for p := range paths {
 		old, nw := before[p], after[p]
 		if string(old) == string(nw) && (old == nil) == (nw == nil) {
@@ -265,13 +360,9 @@ func describe(req editRequest, before, after map[string][]byte) ([]string, strin
 			ks, vs, err := mergedriver.JSONKeys(old, nw)
 			if err == nil {
 				for _, k := range ks {
-					keys = append(keys, k)
-					if v, ok := vs[k]; ok {
-						j, _ := json.Marshal(v)
-						values[k] = string(j)
-					} else {
-						removed[k] = true
-					}
+					j, _ := json.Marshal(vs[k])
+					_, ok := vs[k]
+					keys = append(keys, keyChange{k, string(j), !ok})
 				}
 				continue
 			}
@@ -283,23 +374,36 @@ func describe(req editRequest, before, after map[string][]byte) ([]string, strin
 					if req.keyName != nil {
 						name = req.keyName(k)
 					}
-					keys = append(keys, name)
-					if v, ok := vs[k]; ok {
-						values[name] = v
-					} else {
-						removed[name] = true
-					}
+					v, ok := vs[k]
+					keys = append(keys, keyChange{name, v, !ok})
 				}
 				continue
 			}
 		}
-		keys = append(keys, p)
-		if nw == nil {
-			removed[p] = true
+		keys = append(keys, keyChange{key: p, removed: nw == nil})
+	}
+	return keys
+}
+
+// describe produces the changed key names and a one-line summary, e.g.
+// "vscode: set editor.fontSize = 14", from changedKeys output.
+func describe(label string, changes []keyChange) ([]string, string) {
+	values := map[string]string{}
+	removed := map[string]bool{}
+	seen := map[string]bool{}
+	var keys []string
+	for _, c := range changes {
+		if !seen[c.key] {
+			seen[c.key] = true
+			keys = append(keys, c.key)
+		}
+		if !c.removed {
+			values[c.key], removed[c.key] = c.value, false
+		} else if _, set := values[c.key]; !set {
+			removed[c.key] = true
 		}
 	}
 	sort.Strings(keys)
-	label := req.label
 	switch {
 	case len(keys) == 0:
 		return keys, label + ": update"

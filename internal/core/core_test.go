@@ -43,8 +43,48 @@ func newEnv(t *testing.T, integration string) *env {
 	if _, err := Init(e.repo, InitOptions{Bare: true, Integration: integration, DriverCommand: gbBinary}); err != nil {
 		t.Fatal(err)
 	}
+	e.git("config", "confit.host", "laptop")
 	return e
 }
+
+// manifest edits confit.toml on the integration branch.
+func (e *env) manifest(edit func(m *Manifest)) {
+	e.t.Helper()
+	if _, err := e.open().UpdateManifest("test", func(m *Manifest) error {
+		if m.Adapters == nil {
+			m.Adapters = map[string]ManifestAdapter{}
+		}
+		if m.Hosts == nil {
+			m.Hosts = map[string]ManifestHost{}
+		}
+		edit(m)
+		return nil
+	}); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+// host edits this host's entry in the manifest.
+func (e *env) host(edit func(h *ManifestHost)) {
+	e.t.Helper()
+	e.manifest(func(m *Manifest) {
+		h := m.Hosts["laptop"]
+		if h.Track == nil {
+			h.Track = map[string]Selector{}
+		}
+		if h.Local == nil {
+			h.Local = map[string]Selector{}
+		}
+		if h.Consumers == nil {
+			h.Consumers = map[string]ManifestConsumer{}
+		}
+		edit(&h)
+		m.Hosts["laptop"] = h
+	})
+}
+
+func all() Selector                   { return Selector{Prefixes: []string{"*"}} }
+func sel(prefixes ...string) Selector { return Selector{Prefixes: prefixes} }
 
 func (e *env) git(args ...string) string {
 	e.t.Helper()
@@ -70,16 +110,18 @@ func (e *env) fileAdapter(name, content string) string {
 	if content != "" {
 		writeFile(e.t, live, content)
 	}
-	e.git("config", "confit.adapter."+name+".type", "file")
-	e.git("config", "confit.adapter."+name+".file", "settings.json="+live)
+	e.manifest(func(m *Manifest) {
+		m.Adapters[name] = ManifestAdapter{Type: "file", Files: map[string]string{"settings.json": live}}
+	})
+	e.host(func(h *ManifestHost) { h.Track[name] = all() })
 	return live
 }
 
 func (e *env) consumer(name, policy string, adapters ...string) {
-	e.git("config", "confit.consumer."+name+".drift", policy)
-	for _, a := range adapters {
-		e.git("config", "--add", "confit.consumer."+name+".adapter", a)
-	}
+	e.t.Helper()
+	e.host(func(h *ManifestHost) {
+		h.Consumers[name] = ManifestConsumer{Drift: policy, Adapters: adapters}
+	})
 }
 
 func (e *env) show(rev, path string) string {
@@ -415,7 +457,7 @@ func TestConcurrentCapturesCommitOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, live, strings.Replace(settings, "12", "13", 1))
-	before := e.git("rev-list", "--count", "desired")
+	before := e.git("rev-list", "--count", "edits/vscode@laptop")
 	done := make(chan error)
 	for i := 0; i < 6; i++ {
 		go func() {
@@ -431,7 +473,7 @@ func TestConcurrentCapturesCommitOnce(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if after := e.git("rev-list", "--count", "desired"); after != fmt.Sprint(mustAtoi(before)+1) {
+	if after := e.git("rev-list", "--count", "edits/vscode@laptop"); after != fmt.Sprint(mustAtoi(before)+1) {
 		t.Fatalf("commits before %s, after %s; want exactly one more", before, after)
 	}
 }
@@ -464,8 +506,12 @@ func TestAdapterIntegrateSettingKeepsSubsectionCase(t *testing.T) {
 	e := newEnv(t, "")
 	e.fileAdapter("VSCode", settings)
 	e.fileAdapter("Tweaks", settings)
-	e.git("config", "confit.adapter.VSCode.integrate", "false")
-	e.git("config", "confit.adapter.Tweaks.integrate", "true")
+	no, yes := false, true
+	e.manifest(func(m *Manifest) {
+		v, tw := m.Adapters["VSCode"], m.Adapters["Tweaks"]
+		v.Integrate, tw.Integrate = &no, &yes
+		m.Adapters["VSCode"], m.Adapters["Tweaks"] = v, tw
+	})
 	e.consumer("hm", "block", "Tweaks")
 	b := e.open()
 	if b.Config.Adapters["VSCode"].Integrate {

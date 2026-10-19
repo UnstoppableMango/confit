@@ -36,7 +36,7 @@ func TestMergeJSONConflictAndRemoval(t *testing.T) {
 	if err != nil || len(conflicts) > 0 {
 		t.Fatalf("err=%v conflicts=%v", err, conflicts)
 	}
-	m, _ := decodeJSONC(out)
+	m, _ := DecodeJSONC(out)
 	if m["a"] != float64(2) || m["c"] != nil || len(m["b"].(map[string]any)) != 1 {
 		t.Fatalf("bad merge: %s", out)
 	}

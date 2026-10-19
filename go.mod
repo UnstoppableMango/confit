@@ -3,6 +3,7 @@ module github.com/UnstoppableMango/confit
 go 1.26.0
 
 require (
+	github.com/BurntSushi/toml v1.5.0
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f
 	golang.org/x/sys v0.47.0
