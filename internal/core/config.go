@@ -20,7 +20,7 @@ const (
 	Block  DriftPolicy = "block"  // refuse to apply until someone decides
 )
 
-// Consumer is `confit.consumer.<name>.*`.
+// Consumer is `[hosts.<host>.consumers.<name>]` in the manifest.
 type Consumer struct {
 	Name     string
 	Source   string   // branch it follows; defaults to the integration branch
@@ -28,16 +28,28 @@ type Consumer struct {
 	Drift    DriftPolicy
 }
 
-// Config is everything under `confit.*` in the repo's git config. Branch
-// names are configuration: confit never looks at HEAD or a remote's default branch.
+// Tracking is what this host captures and applies through one adapter, and
+// which of it lives in the host's own layer.
+type Tracking struct {
+	Track, Local Selector
+	// DconfRoot names dconf keys by their full path; empty for other adapters.
+	DconfRoot string
+}
+
+// Config is the machine-local settings under `confit.*` in git config, plus
+// this host's view of the manifest. Branch names are configuration: confit
+// never looks at HEAD or a remote's default branch.
 type Config struct {
 	Integration   string // short branch name, default "desired"
 	EditsPrefix   string // default "edits/"
 	AppliedPrefix string // default "applied/"
 	Host          string
 	DriverCommand string // how git invokes confit's merge drivers, default "confit"
-	Adapters      map[string]adapter.Config
-	Consumers     map[string]Consumer
+	Manifest      Manifest
+	// Adapters, Consumers and Tracking are this host's, from the manifest.
+	Adapters  map[string]adapter.Config
+	Consumers map[string]Consumer
+	Tracking  map[string]Tracking
 }
 
 const notesRef = "refs/notes/confit-applied"
@@ -55,122 +67,77 @@ func loadConfig(r *gitrepo.Repo) (Config, error) {
 		return v[len(v)-1]
 	}
 	host, _ := os.Hostname()
-	c := Config{
+	return Config{
 		Integration:   or(last("confit.integrationBranch"), "desired"),
 		EditsPrefix:   or(last("confit.editsPrefix"), "edits/"),
 		AppliedPrefix: or(last("confit.appliedPrefix"), "applied/"),
 		Host:          or(last("confit.host"), host),
 		DriverCommand: or(last("confit.driverCommand"), "confit"),
-		Adapters:      map[string]adapter.Config{},
-		Consumers:     map[string]Consumer{},
-	}
-	// Subsection names keep their case in git config; variable names don't.
-	for key, vals := range raw {
-		parts := strings.SplitN(key, ".", 2)
-		if len(parts) < 2 {
+	}, nil
+}
+
+// loadManifest derives this host's adapters, consumers and tracking.
+func (b *Buffer) loadManifest(m Manifest) error {
+	c := &b.Config
+	c.Manifest = m
+	c.Adapters, c.Consumers, c.Tracking = map[string]adapter.Config{}, map[string]Consumer{}, map[string]Tracking{}
+	h := m.Hosts[c.Host]
+	for _, name := range sortedKeys(m.Adapters) {
+		track, tracked := h.Track[name]
+		local, isLocal := h.Local[name]
+		if !tracked && !isLocal {
 			continue
 		}
-		rest := parts[1]
-		i := strings.LastIndex(rest, ".")
-		if i < 0 {
-			continue
+		ma := m.Adapters[name]
+		a := adapter.Config{Name: name, Type: ma.Type, Path: or(strings.Trim(ma.Path, "/"), name),
+			Editor: name + "@" + c.Host, Root: ma.Root, Command: ma.Command, Integrate: true}
+		if a.Path == hostsDir {
+			return fmt.Errorf("adapter %s: path %q is reserved for host layers", name, hostsDir)
 		}
-		kind, name, field := "", "", rest[i+1:]
-		if k, n, ok := strings.Cut(rest[:i], "."); ok {
-			kind, name = k, n
-		}
-		v := vals[len(vals)-1]
-		switch kind {
-		case "adapter":
-			a := c.Adapters[name]
-			a.Name = name
-			switch field {
-			case "type":
-				a.Type = v
-			case "path":
-				a.Path = v
-			case "editor":
-				a.Editor = v
-			case "file":
-				a.Files = vals
-			case "root":
-				a.Root = v
-			case "command":
-				a.Command = v
-			case "integrate":
-				a.Integrate = v != "false"
-			}
-			if !hasKey(raw, "confit.adapter."+name+".integrate") {
-				a.Integrate = true
-			}
-			c.Adapters[name] = a
-		case "consumer":
-			cs := c.Consumers[name]
-			cs.Name = name
-			switch field {
-			case "source":
-				cs.Source = v
-			case "adapter":
-				cs.Adapters = vals
-			case "drift":
-				cs.Drift = DriftPolicy(v)
-			}
-			c.Consumers[name] = cs
-		}
-	}
-	for name, a := range c.Adapters {
-		if a.Path == "" {
-			a.Path = name
-		}
-		if a.Editor == "" {
-			a.Editor = name + "@" + c.Host
+		for _, repoName := range sortedKeys(ma.Files) {
+			a.Files = append(a.Files, repoName+"="+expandHome(ma.Files[repoName]))
 		}
 		c.Adapters[name] = a
+		t := Tracking{Track: track, Local: local}
+		if a.Type == "dconf" {
+			t.DconfRoot = or(a.Root, "/")
+		}
+		c.Tracking[name] = t
+	}
+	for _, name := range sortedKeys(h.Consumers) {
+		mc := h.Consumers[name]
+		cs := Consumer{Name: name, Source: or(mc.Source, c.Integration), Adapters: append([]string(nil), mc.Adapters...),
+			Drift: DriftPolicy(or(mc.Drift, string(Adopt)))}
+		switch cs.Drift {
+		case Adopt, Revert, Block:
+		default:
+			return fmt.Errorf("consumer %s: unknown drift policy %q", name, cs.Drift)
+		}
+		for _, a := range cs.Adapters {
+			if _, ok := c.Adapters[a]; !ok {
+				return fmt.Errorf("consumer %s writes adapter %s, which host %s doesn't track", name, a, c.Host)
+			}
+		}
+		sort.Strings(cs.Adapters)
+		c.Consumers[name] = cs
 	}
 	// An adapter feeding a revert or block consumer must not integrate its
 	// captures on its own, or the drift would be adopted behind the policy.
 	for name, a := range c.Adapters {
-		if hasKey(raw, "confit.adapter."+name+".integrate") {
-			continue
-		}
-		for _, cs := range c.Consumers {
-			for _, an := range cs.Adapters {
-				if an == name && cs.Drift != "" && cs.Drift != Adopt {
-					a.Integrate = false
+		if set := m.Adapters[name].Integrate; set != nil {
+			a.Integrate = *set
+		} else {
+			for _, cs := range c.Consumers {
+				for _, an := range cs.Adapters {
+					if an == name && cs.Drift != Adopt {
+						a.Integrate = false
+					}
 				}
 			}
 		}
 		c.Adapters[name] = a
 	}
-	for name, cs := range c.Consumers {
-		if cs.Source == "" {
-			cs.Source = c.Integration
-		}
-		if cs.Drift == "" {
-			cs.Drift = Adopt
-		}
-		switch cs.Drift {
-		case Adopt, Revert, Block:
-		default:
-			return c, fmt.Errorf("consumer %s: unknown drift policy %q", name, cs.Drift)
-		}
-		sort.Strings(cs.Adapters)
-		c.Consumers[name] = cs
-	}
-	return c, nil
-}
-
-// hasKey looks up section.subsection.variable as git reports it: section and
-// variable lowercased, the subsection as written.
-func hasKey(raw map[string][]string, key string) bool {
-	first, last := strings.Index(key, "."), strings.LastIndex(key, ".")
-	if first >= 0 && last > first {
-		key = strings.ToLower(key[:first]) + key[first:last] + strings.ToLower(key[last:])
-	} else {
-		key = strings.ToLower(key)
-	}
-	_, ok := raw[key]
-	return ok
+	return nil
 }
 
 func or(v, def string) string {
@@ -189,3 +156,9 @@ func (c Config) appliedRef(consumer string) string {
 	return "refs/heads/" + c.AppliedPrefix + consumer
 }
 func (c Config) sourceRef(cs Consumer) string { return "refs/heads/" + cs.Source }
+
+// hostsDir holds the per-host layers: hosts/<host>/<adapter path>/...
+const hostsDir = "hosts"
+
+// hostPath is where this host's layer of an adapter lives.
+func (c Config) hostPath(a adapter.Config) string { return hostsDir + "/" + c.Host + "/" + a.Path }

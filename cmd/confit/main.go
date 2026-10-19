@@ -27,7 +27,8 @@ const usage = `usage: confit [-C <repo>] <command> [args]
 
   init [--bare] [--integration NAME] [--driver-command CMD] [path]
   adapter add <name> --type dconf|file|<external> [--path DIR] [--file [NAME=]PATH]...
-                     [--root /dconf/root/] [--command CMD] [--editor NAME] [--no-integrate]
+                     [--root /dconf/root/] [--command CMD] [--no-integrate]
+                     [--track PREFIX]... [--local PREFIX]...
   consumer add <name> [--source BRANCH] [--adapter NAME]... [--drift adopt|revert|block]
   capture <adapter> [--no-integrate] [--json]
   watch <adapter> [--quiet DURATION]
@@ -175,41 +176,92 @@ func cmdInit(repo string, args []string) int {
 	return 0
 }
 
+// cmdAdapterAdd declares an adapter in the manifest and makes this host
+// track it. It is idempotent, so a home-manager switch can run it every time.
 func cmdAdapterAdd(b *core.Buffer, args []string) int {
 	fs := flag.NewFlagSet("adapter add", flag.ContinueOnError)
 	typ := fs.String("type", "", "dconf, file, or the name of an external confit-adapter-<type>")
 	path := fs.String("path", "", "directory in the repo (default: adapter name)")
 	root := fs.String("root", "", "dconf: subtree to manage (default /)")
 	command := fs.String("command", "", "external adapter executable")
-	editor := fs.String("editor", "", "editor branch suffix (default <name>@<host>)")
 	noInt := fs.Bool("no-integrate", false, "don't integrate captures automatically")
-	var files multi
+	var files, track, local multi
 	fs.Var(&files, "file", "file adapter: [NAME=]PATH, repeatable")
+	fs.Var(&track, "track", "what this host tracks: a prefix, file, file:key, * or shared; repeatable (default *)")
+	fs.Var(&local, "local", "what goes to this host's own layer, same forms as --track; repeatable")
 	pos, err := parse(fs, args)
 	if err != nil || len(pos) != 1 || *typ == "" {
 		return usageErr("adapter add <name> --type T")
 	}
 	name := pos[0]
-	cfg := adapter.Config{Name: name, Type: *typ, Files: files, Root: *root, Command: *command}
-	if _, err := adapter.New(cfg); err != nil {
+	if _, err := adapter.New(adapter.Config{Name: name, Type: *typ, Files: files, Root: *root, Command: *command}); err != nil {
 		return fail(err)
 	}
-	set := map[string][]string{"type": {*typ}, "path": {*path}, "root": {*root}, "command": {*command}, "editor": {*editor}, "file": files}
-	if *noInt {
-		set["integrate"] = []string{"false"}
+	trackSel, err := selector(track)
+	if err != nil {
+		return usageErr(err.Error())
 	}
-	for field, vals := range set {
-		if len(vals) == 0 || vals[0] == "" {
-			continue
+	localSel, err := selector(local)
+	if err != nil {
+		return usageErr(err.Error())
+	}
+	host := b.Config.Host
+	_, err = b.UpdateManifest("adapter "+name, func(m *core.Manifest) error {
+		ma := core.ManifestAdapter{Type: *typ, Path: *path, Root: *root, Command: *command}
+		if len(files) > 0 {
+			ma.Files = adapter.FileMap(files)
 		}
-		if err := b.Repo.SetConfig("confit.adapter."+name+"."+field, vals...); err != nil {
-			return fail(err)
+		if *noInt {
+			f := false
+			ma.Integrate = &f
 		}
+		if m.Adapters == nil {
+			m.Adapters = map[string]core.ManifestAdapter{}
+		}
+		m.Adapters[name] = ma
+		if m.Hosts == nil {
+			m.Hosts = map[string]core.ManifestHost{}
+		}
+		h := m.Hosts[host]
+		if h.Track == nil {
+			h.Track = map[string]core.Selector{}
+		}
+		// Tracking set by hand in the manifest stays unless a flag replaces it.
+		if _, ok := h.Track[name]; !ok || len(track) > 0 {
+			if len(track) == 0 {
+				trackSel = core.Selector{Prefixes: []string{"*"}}
+			}
+			h.Track[name] = trackSel
+		}
+		if len(local) > 0 {
+			if h.Local == nil {
+				h.Local = map[string]core.Selector{}
+			}
+			h.Local[name] = localSel
+		}
+		m.Hosts[host] = h
+		return nil
+	})
+	if err != nil {
+		return fail(err)
 	}
 	fmt.Printf("adapter %s (%s) added\n", name, *typ)
 	return 0
 }
 
+func selector(vals []string) (core.Selector, error) {
+	if len(vals) == 1 && vals[0] == "shared" {
+		return core.Selector{Shared: true}, nil
+	}
+	for _, v := range vals {
+		if v == "shared" {
+			return core.Selector{}, fmt.Errorf(`"shared" can't be combined with other entries`)
+		}
+	}
+	return core.Selector{Prefixes: vals}, nil
+}
+
+// cmdConsumerAdd declares one of this host's consumers in the manifest.
 func cmdConsumerAdd(b *core.Buffer, args []string) int {
 	fs := flag.NewFlagSet("consumer add", flag.ContinueOnError)
 	source := fs.String("source", "", "branch to follow (default: integration branch)")
@@ -227,19 +279,23 @@ func cmdConsumerAdd(b *core.Buffer, args []string) int {
 	}
 	for _, a := range adapters {
 		if _, ok := b.Config.Adapters[a]; !ok {
-			return fail(fmt.Errorf("no adapter %q", a))
+			return fail(fmt.Errorf("no adapter %q on host %s", a, b.Config.Host))
 		}
 	}
-	name := pos[0]
-	if *source != "" {
-		if err := b.Repo.SetConfig("confit.consumer."+name+".source", *source); err != nil {
-			return fail(err)
+	name, host := pos[0], b.Config.Host
+	_, err = b.UpdateManifest("consumer "+name, func(m *core.Manifest) error {
+		if m.Hosts == nil {
+			m.Hosts = map[string]core.ManifestHost{}
 		}
-	}
-	if err := b.Repo.SetConfig("confit.consumer."+name+".drift", *drift); err != nil {
-		return fail(err)
-	}
-	if err := b.Repo.SetConfig("confit.consumer."+name+".adapter", adapters...); err != nil {
+		h := m.Hosts[host]
+		if h.Consumers == nil {
+			h.Consumers = map[string]core.ManifestConsumer{}
+		}
+		h.Consumers[name] = core.ManifestConsumer{Source: *source, Adapters: adapters, Drift: *drift}
+		m.Hosts[host] = h
+		return nil
+	})
+	if err != nil {
 		return fail(err)
 	}
 	fmt.Printf("consumer %s added (drift policy %s)\n", name, *drift)

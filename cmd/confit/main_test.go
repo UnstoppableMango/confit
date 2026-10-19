@@ -48,7 +48,7 @@ func TestCLI(t *testing.T) {
 		Empty   bool
 	}
 	json.Unmarshal([]byte(confit(0, "pending", "hm", "--json")), &p)
-	if p.Empty || len(p.Commits) != 2 {
+	if p.Empty || len(p.Commits) != 4 { // init, two manifest edits, the capture
 		t.Fatalf("pending: %+v", p)
 	}
 	target := strings.TrimSpace(confit(0, "prepare", "hm"))

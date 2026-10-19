@@ -15,15 +15,15 @@ import (
 // patch through hujson, so ours keeps its comments and formatting.
 // Arrays are treated as single values.
 func MergeJSON(base, ours, theirs []byte) ([]byte, []string, error) {
-	o, err := decodeJSONC(base)
+	o, err := DecodeJSONC(base)
 	if err != nil {
 		return nil, nil, fmt.Errorf("base: %w", err)
 	}
-	a, err := decodeJSONC(ours)
+	a, err := DecodeJSONC(ours)
 	if err != nil {
 		return nil, nil, fmt.Errorf("ours: %w", err)
 	}
-	b, err := decodeJSONC(theirs)
+	b, err := DecodeJSONC(theirs)
 	if err != nil {
 		return nil, nil, fmt.Errorf("theirs: %w", err)
 	}
@@ -73,7 +73,8 @@ type patchOp struct {
 	Value json.RawMessage `json:"value,omitempty"`
 }
 
-func decodeJSONC(data []byte) (map[string]any, error) {
+// DecodeJSONC decodes a JSON or JSONC object. Empty input is an empty object.
+func DecodeJSONC(data []byte) (map[string]any, error) {
 	if len(strings.TrimSpace(string(data))) == 0 {
 		return map[string]any{}, nil
 	}
@@ -152,11 +153,11 @@ func escapePointer(k string) string {
 // JSONKeys lists the leaf keys that differ between two JSON(C) documents, for
 // commit summaries. Nested keys are joined with "/".
 func JSONKeys(before, after []byte) ([]string, map[string]any, error) {
-	a, err := decodeJSONC(before)
+	a, err := DecodeJSONC(before)
 	if err != nil {
 		return nil, nil, err
 	}
-	b, err := decodeJSONC(after)
+	b, err := DecodeJSONC(after)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -192,4 +193,56 @@ func JSONKeys(before, after []byte) ([]string, map[string]any, error) {
 	walk(a, b, "")
 	sort.Strings(keys)
 	return keys, values, nil
+}
+
+// RewriteJSON makes a JSON(C) document's top-level keys equal want, patching
+// it through hujson so comments and formatting outside the changed keys stay.
+func RewriteJSON(data []byte, want map[string]json.RawMessage) ([]byte, error) {
+	have, err := DecodeJSONC(data)
+	if err != nil {
+		return nil, err
+	}
+	if len(strings.TrimSpace(string(data))) == 0 {
+		data = []byte("{}\n")
+	}
+	var ops []patchOp
+	for _, k := range sortedKeys(have) {
+		if _, ok := want[k]; !ok {
+			ops = append(ops, patchOp{Op: "remove", Path: "/" + escapePointer(k)})
+		}
+	}
+	for _, k := range sortedKeys(want) {
+		var v any
+		if err := json.Unmarshal(want[k], &v); err != nil {
+			return nil, fmt.Errorf("%s: %w", k, err)
+		}
+		old, ok := have[k]
+		switch {
+		case !ok:
+			ops = append(ops, patchOp{Op: "add", Path: "/" + escapePointer(k), Value: want[k]})
+		case !reflect.DeepEqual(old, v):
+			ops = append(ops, patchOp{Op: "replace", Path: "/" + escapePointer(k), Value: want[k]})
+		}
+	}
+	v, err := hujson.Parse(data)
+	if err != nil {
+		return nil, err
+	}
+	if len(ops) > 0 {
+		p, _ := json.Marshal(ops)
+		if err := v.Patch(p); err != nil {
+			return nil, err
+		}
+		indentAdded(&v)
+	}
+	return v.Pack(), nil
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
