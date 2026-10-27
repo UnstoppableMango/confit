@@ -27,8 +27,8 @@ func TestDconfCaptureAndApply(t *testing.T) {
 	write("/org/gbtest-core/desktop/interface/font-name", "'Cantarell 11'")
 
 	e := newEnv(t, "")
-	e.git("config", "confit.adapter.dconf.type", "dconf")
-	e.git("config", "confit.adapter.dconf.root", "/org/gbtest-core/")
+	e.manifest(func(m *Manifest) { m.Adapters["dconf"] = ManifestAdapter{Type: "dconf", Root: "/org/gbtest-core/"} })
+	e.host(func(h *ManifestHost) { h.Track["dconf"] = all() })
 	e.consumer("nixos", "adopt", "dconf")
 	b := e.open()
 
