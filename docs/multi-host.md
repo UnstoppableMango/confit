@@ -1,6 +1,6 @@
 # Multi-host design
 
-Decided with Erik on 2026-10-17, after step 4 ([end-to-end.md](end-to-end.md)). It settles that page's open decisions and the design's open question 1 (one repo per machine or shared). Stages 1 to 3 of the build plan at the end are built.
+Decided with Erik on 2026-10-17, after step 4 ([end-to-end.md](end-to-end.md)). It settles that page's open decisions and the design's open question 1 (one repo per machine or shared). All four stages of the build plan at the end are built.
 
 ## Decisions
 
@@ -89,6 +89,8 @@ As built: commands that write refs (`capture`, `apply`, `integrate`, `edit commi
 - **Options:** `enable`, `package`, `repo`, `remote` (a URL, cloned on first switch), `host` (default: the hostname), `apply`.
 - **Activation:** capture before `writeBoundary` and apply after `dconfSettings`, as today. A key also set in `dconf.settings` is overwritten by the switch, and the UI value is still recorded (2).
 - **Watching:** one `confit watch --all` user service follows `dconf watch` and inotify for whatever the manifest tracks on this host, and reloads when the manifest changes. The hourly capture timer stays.
+
+As built: adapters, consumers and drift policies are no longer module options; they live in the manifest. The module declares its consumer `home-manager@<host>` with `adapters = ["*"]` (every adapter the host tracks) unless the manifest already has it. A first switch whose clone of `remote` fails skips confit for that switch rather than start a history the remote's would have to be merged with. `confit watch --all` checks the manifest every 30 seconds (`--reload`), and `confit capture --all` serves the timer and the switch.
 
 ## Build plan
 

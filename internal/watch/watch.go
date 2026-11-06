@@ -12,6 +12,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"strings"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -100,6 +103,73 @@ func Run(ctx context.Context, cfg adapter.Config, opts Options) error {
 			}
 		}
 		run()
+	}
+}
+
+// All watches every adapter list returns, one Run each, and starts over when
+// the list changes, which it checks every reload. It returns when ctx is
+// done, or with the first watch that fails, so a supervisor can restart it.
+func All(ctx context.Context, list func() ([]adapter.Config, error), reload time.Duration,
+	opts func(name string) Options, log func(format string, args ...any)) error {
+	if reload <= 0 {
+		reload = 30 * time.Second
+	}
+	cur, err := list()
+	if err != nil {
+		return err
+	}
+	for {
+		names := make([]string, len(cur))
+		for i, c := range cur {
+			names[i] = c.Name
+		}
+		if len(cur) == 0 {
+			log("this host tracks no dconf or file adapter yet")
+		} else {
+			log("watching %s", strings.Join(names, ", "))
+		}
+		runCtx, cancel := context.WithCancel(ctx)
+		var wg sync.WaitGroup
+		errc := make(chan error, len(cur))
+		for _, cfg := range cur {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if err := Run(runCtx, cfg, opts(cfg.Name)); err != nil {
+					errc <- fmt.Errorf("%s: %w", cfg.Name, err)
+				}
+			}()
+		}
+		tick := time.NewTicker(reload)
+		var failed error
+	wait:
+		for {
+			select {
+			case <-ctx.Done():
+				break wait
+			case failed = <-errc:
+				break wait
+			case <-tick.C:
+				next, err := list()
+				if err != nil {
+					log("reading the manifest: %v", err)
+					continue
+				}
+				if !reflect.DeepEqual(next, cur) {
+					cur = next
+					break wait
+				}
+			}
+		}
+		tick.Stop()
+		cancel()
+		wg.Wait()
+		if failed != nil {
+			return failed
+		}
+		if ctx.Err() != nil {
+			return nil
+		}
 	}
 }
 
