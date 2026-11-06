@@ -1,6 +1,6 @@
 # Multi-host design
 
-Decided with Erik on 2026-10-17, after step 4 ([end-to-end.md](end-to-end.md)). It settles that page's open decisions and the design's open question 1 (one repo per machine or shared). Stages 1 and 2 of the build plan at the end are built.
+Decided with Erik on 2026-10-17, after step 4 ([end-to-end.md](end-to-end.md)). It settles that page's open decisions and the design's open question 1 (one repo per machine or shared). Stages 1 to 3 of the build plan at the end are built.
 
 ## Decisions
 
@@ -81,6 +81,8 @@ The editor branch for a capture is `edits/<adapter>@<host>`, as today. When the 
 4. **Apply notes** move to a notes ref per host, `refs/notes/confit-applied/<host>`. Each host writes only its own, so notes never need merging. A line-based merge such as `cat_sort_uniq` would split the multi-line apply records.
 
 Applied pointers, editor branches and notes refs are all per host, so only `desired` sees contention.
+
+As built: commands that write refs (`capture`, `apply`, `integrate`, `edit commit`, `applied advance`, `adapter add`, `consumer add`, and `confit sync`) fetch first and push afterwards; `pending` and `prepare` only fetch. Without a `confit.remote` remote (default `origin`) sync is off. Fetched refs land under `refs/confit/remotes/<remote>/` and other hosts' editor branches, applied pointers and notes refs are mirrored from there; a host owns `edits/*@<host>`, its notes ref, and the applied pointers of its consumers (those in its manifest entry, or named `*@<host>`). Diverged `desired` is merged with a `Confit-Synced` trailer. A host that ran `confit init` before adding the remote takes the remote's `desired` in place of its lone initial commit.
 
 ## home-manager module (1, 2, 14)
 

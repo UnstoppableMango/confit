@@ -64,6 +64,7 @@ A consumer that confit can apply through its adapters runs `confit apply <consum
 | `confit apply <consumer> [--force]` | prepare, write the target tree through the adapters, advance. |
 | `confit applied advance <consumer> <commit> [--expect OLD]` | Compare-and-swap the applied pointer and append an apply note. Refuses commits outside the source branch. |
 | `confit status [--json]` | Unintegrated editors, conflicts, pending work, recorded drift. |
+| `confit sync` | Pull from and push to `confit.remote` (default `origin`). The commands that write refs already do this; offline is a warning, and the next command that gets through pushes. |
 | `confit host` | Prints the host name confit uses: `confit.host`, else the hostname. |
 | `confit merge-driver json\|ini %O %A %B` | Invoked by git, never by hand. |
 
@@ -71,8 +72,8 @@ Every command takes `-C <repo>` (or `$CONFIT_REPO`). Most take `--json`. Exit co
 
 ## How it maps to the design
 
-- **Refs**: `edits/<editor>`, the integration branch (`desired` by default, configurable, and HEAD is never consulted), `applied/<consumer>`, and `refs/notes/confit-applied`. All prefixes are git config.
-- **Manifest**: adapters, what each host tracks, and its consumers live in `confit.toml` on the integration branch, so every machine sharing the repo reads the same one. Git config keeps only machine-local settings: `confit.host`, the branch names and the merge driver. See [docs/multi-host.md](docs/multi-host.md).
+- **Refs**: `edits/<editor>`, the integration branch (`desired` by default, configurable, and HEAD is never consulted), `applied/<consumer>`, and one apply notes ref per host, `refs/notes/confit-applied/<host>`. All prefixes are git config.
+- **Manifest**: adapters, what each host tracks, and its consumers live in `confit.toml` on the integration branch, so every machine sharing the repo reads the same one. Git config keeps only machine-local settings: `confit.host`, `confit.remote`, the branch names and the merge driver. See [docs/multi-host.md](docs/multi-host.md).
 - **Layers**: the shared layer is `<adapter>/...`; a host's own layer is `hosts/<host>/<adapter>/...` and wins on apply. Layers combine per dconf key and per top-level JSON key, and per file otherwise. Anything a host doesn't track is never captured, and apply leaves it alone.
 - **Spike rules, all enforced in `internal/gitrepo`**:
   - go-git only reads and writes objects.
