@@ -124,9 +124,9 @@ in
     };
 
     consumer = mkOption {
-      type = types.str;
-      default = "home-manager";
-      description = "This consumer's name; its applied pointer is `applied/<name>`.";
+      type = types.nullOr types.str;
+      default = null;
+      description = "This consumer's name; its applied pointer is `applied/<name>`. Defaults to `home-manager@<host>`, with the host confit uses (`confit.host`, else the hostname), so machines sharing a repo don't share a pointer.";
     };
 
     drift = mkOption {
@@ -228,12 +228,20 @@ in
             ${pkgs.dbus}/bin/dbus-run-session --dbus-daemon=${pkgs.dbus}/bin/dbus-daemon -- ${confit} "$@"
           fi
         }
+        confitConsumer() {
+          ${
+            if cfg.consumer != null then
+              "echo ${escapeShellArg cfg.consumer}"
+            else
+              "echo \"home-manager@$(${confit} host)\""
+          }
+        }
         export PATH=${lib.makeBinPath (cfg.extraPackages ++ [ cfg.package ])}:$PATH
         run ${lib.getExe cfg.package} init --bare --integration ${escapeShellArg cfg.integrationBranch} ${escapeShellArg cfg.repo}
         ${concatStringsSep "\n" (
           mapAttrsToList (n: a: "run ${confit} adapter add ${escapeShellArgs (adapterArgs n a)}") cfg.adapters
         )}
-        run ${confit} consumer add ${escapeShellArg cfg.consumer} --drift ${cfg.drift} ${
+        run ${confit} consumer add "$(confitConsumer)" --drift ${cfg.drift} ${
           escapeShellArgs (concatMap (n: [ "--adapter=${n}" ]) (builtins.attrNames cfg.adapters))
         }
         ${concatStringsSep "\n" (
@@ -246,8 +254,8 @@ in
       home.activation.confit = mkIf cfg.apply (
         lib.hm.dag.entryAfter [ "writeBoundary" "dconfSettings" "confitCapture" ] ''
           if [[ -v DRY_RUN ]]; then
-            echo "Would run confit apply ${cfg.consumer}"
-          elif confitRun apply ${escapeShellArg cfg.consumer}; then
+            echo "Would run confit apply"
+          elif confitRun apply "$(confitConsumer)"; then
             :
           else
             code=$?

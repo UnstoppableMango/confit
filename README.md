@@ -64,6 +64,7 @@ A consumer that confit can apply through its adapters runs `confit apply <consum
 | `confit apply <consumer> [--force]` | prepare, write the target tree through the adapters, advance. |
 | `confit applied advance <consumer> <commit> [--expect OLD]` | Compare-and-swap the applied pointer and append an apply note. Refuses commits outside the source branch. |
 | `confit status [--json]` | Unintegrated editors, conflicts, pending work, recorded drift. |
+| `confit host` | Prints the host name confit uses: `confit.host`, else the hostname. |
 | `confit merge-driver json\|ini %O %A %B` | Invoked by git, never by hand. |
 
 Every command takes `-C <repo>` (or `$CONFIT_REPO`). Most take `--json`. Exit codes: 0 ok, 1 error, 2 usage, 3 conflict or blocked.
@@ -96,7 +97,7 @@ Every command takes `-C <repo>` (or `$CONFIT_REPO`). Most take `--json`. Exit co
 - Session squashing on integration. `confit watch` debouncing already turns a slider drag into one commit.
 - A NixOS module (system-wide dconf, other system consumers). The home-manager module covers the user side.
 - k8s-style keyed list merges (`name` keys) in the JSON driver.
-- Pushing to a remote, per-host consumer names and the slim home-manager module: stages 2 to 4 of [docs/multi-host.md](docs/multi-host.md).
+- Pushing to a remote and the slim home-manager module: stages 3 and 4 of [docs/multi-host.md](docs/multi-host.md).
 
 ## Development
 

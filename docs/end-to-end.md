@@ -24,7 +24,7 @@ Where GSettings with the GNOME schemas is available, the test uses `gsettings`, 
 
 **`e2e/home-manager/`** (`make e2e-home-manager`) builds a real home-manager generation with the new module (`services.confit`, with VSCode and dconf enabled, plus one key in `dconf.settings`) and runs real `activate` switches in a throwaway HOME. It checks only what the module adds:
 
-1. The first switch captures the existing desktop and applies, so `applied/home-manager@e2e` = `desired`.
+1. The first switch captures the existing desktop and applies, so `applied/home-manager@<host>` = `desired`.
 2. A Tweaks change to a key that home-manager also declares is recorded before home-manager overwrites it.
 3. A switch with nothing new moves no branch.
 

@@ -13,7 +13,8 @@ has() { [[ $1 == *"$2"* ]] || fail "$3"; }
 echo "### First switch records the existing desktop and applies"
 gsettings set org.gnome.desktop.interface color-scheme prefer-dark
 switch
-[[ $(git -C "$repo" rev-parse applied/home-manager@e2e) == $(git -C "$repo" rev-parse desired) ]] || fail "applied pointer not at desired"
+# The consumer is named after the host by default.
+[[ $(git -C "$repo" rev-parse "applied/home-manager@$(uname -n)") == $(git -C "$repo" rev-parse desired) ]] || fail "applied pointer not at desired"
 has "$(git -C "$repo" show desired:dconf/desktop/interface.ini)" "color-scheme='prefer-dark'" "live dconf not captured"
 
 echo "### A UI change to a key home-manager declares is recorded before the switch overwrites it"

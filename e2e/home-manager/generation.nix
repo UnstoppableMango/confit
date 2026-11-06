@@ -21,7 +21,6 @@ let
         services.confit = {
           enable = true;
           package = confit;
-          consumer = "home-manager@e2e";
           vscode.enable = true;
           dconf.enable = true;
         };
