@@ -136,6 +136,9 @@ func (b *Buffer) Prepare(consumer string) (PrepareResult, error) {
 		return PrepareResult{}, err
 	}
 	defer unlock()
+	if err := b.refresh(); err != nil {
+		return PrepareResult{}, err
+	}
 	return b.prepare(consumer)
 }
 
@@ -233,7 +236,7 @@ func (b *Buffer) unaccountedDrift(cs Consumer) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		if eq, err := b.Repo.SubtreeEqual(tc.Tree, bc.Tree, a.Path); err != nil {
+		if eq, err := b.layersEqual(tc.Tree, bc.Tree, a); err != nil {
 			return nil, err
 		} else if eq {
 			continue
@@ -267,6 +270,9 @@ func (b *Buffer) Apply(consumer string, force bool) (ApplyResult, error) {
 		return ApplyResult{}, err
 	}
 	defer unlock()
+	if err := b.refresh(); err != nil {
+		return ApplyResult{}, err
+	}
 	cs, err := b.consumer(consumer)
 	if err != nil {
 		return ApplyResult{}, err
@@ -291,7 +297,7 @@ func (b *Buffer) Apply(consumer string, force bool) (ApplyResult, error) {
 		if err != nil {
 			return res, err
 		}
-		files, err := b.Repo.ReadFiles(tc.Tree, cfg.Path)
+		files, err := b.applyFiles(cfg, a, tc.Tree)
 		if err != nil {
 			return res, err
 		}
@@ -395,7 +401,7 @@ func (b *Buffer) syncEditors(cs Consumer, applied gitrepo.Hash) error {
 				if err != nil {
 					return err
 				}
-				eq, err := b.Repo.SubtreeEqual(tc.Tree, ac.Tree, a.Path)
+				eq, err := b.layersEqual(tc.Tree, ac.Tree, a)
 				if err != nil {
 					return err
 				}

@@ -1,6 +1,7 @@
 package gitrepo
 
 import (
+	"errors"
 	"io"
 	"sort"
 	"strings"
@@ -279,4 +280,38 @@ func joinPrefix(prefix, rel string) string {
 		return rel
 	}
 	return prefix + "/" + rel
+}
+
+// ReadFile returns one file's contents from tree, and whether it exists.
+func (r *Repo) ReadFile(tree Hash, path string) ([]byte, bool, error) {
+	if tree.IsZero() {
+		return nil, false, nil
+	}
+	t, err := r.r.TreeObject(tree)
+	if err != nil {
+		return nil, false, err
+	}
+	f, err := t.File(path)
+	if errors.Is(err, object.ErrFileNotFound) || errors.Is(err, object.ErrDirectoryNotFound) || errors.Is(err, object.ErrEntryNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	data, err := r.ReadBlob(f.Hash)
+	return data, err == nil, err
+}
+
+// WithFile returns base with one file written at path.
+func (r *Repo) WithFile(base Hash, path string, data []byte) (Hash, error) {
+	entries, err := r.TreeEntries(base)
+	if err != nil {
+		return ZeroHash, err
+	}
+	h, err := r.WriteBlob(data)
+	if err != nil {
+		return ZeroHash, err
+	}
+	entries[path] = Entry{Mode: filemode.Regular, Hash: h}
+	return r.WriteTree(entries)
 }

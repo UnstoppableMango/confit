@@ -5,6 +5,10 @@ schema = 3
     version = 'v1.0.0'
     hash = 'sha256-jlpc8dDj+DmiOU4gEawBu8poJJj9My0s9Mvuk9oS8ww='
 
+  [mod.'github.com/BurntSushi/toml']
+    version = 'v1.5.0'
+    hash = 'sha256-wX8bEVo7swuuAlm0awTIiV1KNCAXnm7Epzwl+wzyqhw='
+
   [mod.'github.com/Microsoft/go-winio']
     version = 'v0.6.2'
     hash = 'sha256-tVNWDUMILZbJvarcl/E7tpSnkn7urqgSHa2Eaka5vSU='

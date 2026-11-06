@@ -35,7 +35,16 @@ func Open(path string) (*Buffer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Buffer{Repo: r, Config: cfg, now: time.Now}, nil
+	b := &Buffer{Repo: r, Config: cfg, now: time.Now}
+	tip, err := r.Resolve(cfg.integrationRef())
+	if err != nil {
+		return nil, err
+	}
+	m, err := b.readManifest(tip)
+	if err != nil {
+		return nil, err
+	}
+	return b, b.loadManifest(m)
 }
 
 // InitOptions configures `confit init`.
@@ -138,7 +147,10 @@ func (b *Buffer) committer(component string) gitrepo.Signature {
 func (b *Buffer) adapter(name string) (adapter.Config, adapter.Adapter, error) {
 	cfg, ok := b.Config.Adapters[name]
 	if !ok {
-		return cfg, nil, fmt.Errorf("no adapter %q (configure confit.adapter.%s.type)", name, name)
+		if _, known := b.Config.Manifest.Adapters[name]; known {
+			return cfg, nil, fmt.Errorf("host %s doesn't track adapter %q (see [hosts.%s] in %s)", b.Config.Host, name, b.Config.Host, ManifestFile)
+		}
+		return cfg, nil, fmt.Errorf("no adapter %q in %s", name, ManifestFile)
 	}
 	a, err := adapter.New(cfg)
 	return cfg, a, err

@@ -54,7 +54,7 @@ A consumer that confit can apply through its adapters runs `confit apply <consum
 | Command | What it does |
 |---|---|
 | `confit init [--bare] [--integration NAME] [path]` | Creates the repo, registers the merge drivers in git config, and creates the integration branch with a `.gitattributes`. Run it on every clone, since git config isn't cloned. |
-| `confit adapter add` / `confit consumer add` | Write `confit.adapter.*` / `confit.consumer.*` git config. |
+| `confit adapter add` / `confit consumer add` | Declare an adapter, or one of this host's consumers, in the manifest `confit.toml` on the integration branch. `adapter add` takes `--track` and `--local` (default: track everything, nothing local). Idempotent. |
 | `confit capture <adapter>` | Snapshot live state, commit the difference to `edits/<editor>`, integrate. No difference means no commit. |
 | `confit watch <adapter> [--quiet 2s]` | Optional trigger for dconf and file adapters: captures once, then runs `confit capture` after each burst of changes once the system has been quiet. Holds no state. |
 | `confit edit commit <editor> --dir D --prefix P` | For UIs and extensions that hand confit their files directly. |
@@ -71,6 +71,8 @@ Every command takes `-C <repo>` (or `$CONFIT_REPO`). Most take `--json`. Exit co
 ## How it maps to the design
 
 - **Refs**: `edits/<editor>`, the integration branch (`desired` by default, configurable, and HEAD is never consulted), `applied/<consumer>`, and `refs/notes/confit-applied`. All prefixes are git config.
+- **Manifest**: adapters, what each host tracks, and its consumers live in `confit.toml` on the integration branch, so every machine sharing the repo reads the same one. Git config keeps only machine-local settings: `confit.host`, the branch names and the merge driver. See [docs/multi-host.md](docs/multi-host.md).
+- **Layers**: the shared layer is `<adapter>/...`; a host's own layer is `hosts/<host>/<adapter>/...` and wins on apply. Layers combine per dconf key and per top-level JSON key, and per file otherwise. Anything a host doesn't track is never captured, and apply leaves it alone.
 - **Spike rules, all enforced in `internal/gitrepo`**:
   - go-git only reads and writes objects.
   - Every ref move is a `git update-ref --stdin` transaction.
@@ -83,8 +85,8 @@ Every command takes `-C <repo>` (or `$CONFIT_REPO`). Most take `--json`. Exit co
 ## Decisions made while building (worth a look)
 
 1. **An editor branch tracks the live state the adapter last saw.** After an apply, confit adds a sync commit (with the applied commit as a parent) to each affected editor branch. The next capture then compares against what is really live, and a later merge has the right base.
-2. **A new editor branch starts from the consumer's last applied commit, or from the repo's root commit.** It doesn't start from `desired`. Otherwise, the first capture of live state could silently overwrite intent that is committed but not applied yet. With this rule, the two meet as a conflict instead.
-3. **Adapters feeding a `revert` or `block` consumer don't auto-integrate captures.** Without this, a watcher would adopt the drift behind the policy's back. It can be overridden with `confit.adapter.<name>.integrate`.
+2. **A new editor branch starts from the consumer's last applied commit, or from the repo's root commit.** It doesn't start from `desired`. Otherwise, the first capture of live state could silently overwrite intent that is committed but not applied yet. With this rule, the two meet as a conflict instead. A capture does start from `desired` when the editor branch is fully integrated and its layers already match `desired`, so it integrates as a fast-forward.
+3. **Adapters feeding a `revert` or `block` consumer don't auto-integrate captures.** Without this, a watcher would adopt the drift behind the policy's back. It can be overridden with `integrate` on the adapter in `confit.toml`.
 4. **`block` means the last observed live state differs from what that consumer last applied.** It stays blocked until someone runs `confit integrate` (keep the drift) or `confit apply --force` (discard it).
 5. **A dconf directory becomes `<dir>.ini` under the adapter path.** Keys directly in the root go to `_root.ini`.
 6. **git runs the merge driver as `confit` from PATH by default.** A Nix store path would break on every upgrade. Use `--driver-command` to override.
@@ -94,7 +96,7 @@ Every command takes `-C <repo>` (or `$CONFIT_REPO`). Most take `--json`. Exit co
 - Session squashing on integration. `confit watch` debouncing already turns a slider drag into one commit.
 - A NixOS module (system-wide dconf, other system consumers). The home-manager module covers the user side.
 - k8s-style keyed list merges (`name` keys) in the JSON driver.
-- Pushing to a remote. The design's open question 1 (one repo per machine or shared) is still open.
+- Pushing to a remote, per-host consumer names and the slim home-manager module: stages 2 to 4 of [docs/multi-host.md](docs/multi-host.md).
 
 ## Development
 

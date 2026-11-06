@@ -20,7 +20,7 @@ type Adapter interface {
 	Apply(files map[string][]byte) error
 }
 
-// Config is an adapter's settings from `confit.adapter.<name>.*`.
+// Config is an adapter's settings, from the manifest (core.ManifestAdapter).
 type Config struct {
 	Name    string
 	Type    string   // dconf, file, or anything else for confit-adapter-<type>
