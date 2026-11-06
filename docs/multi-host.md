@@ -1,6 +1,6 @@
 # Multi-host design
 
-Decided with Erik on 2026-10-17, after step 4 ([end-to-end.md](end-to-end.md)). It settles that page's open decisions and the design's open question 1 (one repo per machine or shared). Stage 1 of the build plan at the end is built.
+Decided with Erik on 2026-10-17, after step 4 ([end-to-end.md](end-to-end.md)). It settles that page's open decisions and the design's open question 1 (one repo per machine or shared). Stages 1 and 2 of the build plan at the end are built.
 
 ## Decisions
 
@@ -58,7 +58,7 @@ drift = "adopt"
 - **`local`** lists what goes to the host's layer (12). Everything else that is tracked goes to the shared layer, except a key the host layer already holds, which stays there (writing it to the shared layer would be undone by the host's next apply). Anything local is tracked.
 - **`"*"`** tracks everything. `confit adapter add` uses it unless given `--track`.
 - **Live paths** live on the adapter, with `~` expanded per machine. A host can override them if it needs to.
-- **Consumers** are per host, under `[hosts.<host>.consumers.<name>]`, with `adapters`, `drift` and `source`. Stage 2 defaults the name to `home-manager@<host>` (7).
+- **Consumers** are per host, under `[hosts.<host>.consumers.<name>]`, with `adapters`, `drift` and `source`. The home-manager module names its consumer `home-manager@<host>` unless told otherwise (7), using the host `confit host` prints.
 - **Git config** keeps `confit.host` (default: the hostname) and `confit.remote` (default `origin`), plus the merge-driver entries, which can't travel with the repo anyway. The integration branch name and the `edits/` and `applied/` prefixes stay there too: the manifest lives on the integration branch, so it can't name it.
 - **A new host** (16) commits `[hosts.<host>]` with `track = "shared"` on its first capture, prepare or apply. That means every key and file already in the shared layer (as `desired` has it), and nothing local.
 - **Manifest edits** are ordinary commits to `desired`. A host reads the manifest from the `desired` it is about to apply, so a change to tracking takes effect at the next apply.

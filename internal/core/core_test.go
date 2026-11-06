@@ -424,6 +424,23 @@ func TestAdvanceRules(t *testing.T) {
 	if !strings.Contains(note, "Consumer: hm") || !strings.Contains(note, "Result: ok") {
 		t.Fatalf("note: %s", note)
 	}
+	// Applying the same commit again moves nothing and adds no note.
+	notes := e.git("rev-parse", "refs/notes/confit-applied")
+	if _, err := b.Advance("hm", r2.Edit.Commit, r2.Edit.Commit, "ok"); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.git("rev-parse", "refs/notes/confit-applied"); got != notes {
+		t.Fatal("a no-op advance wrote an apply note")
+	}
+	// A pointer that moved without its note (the write failed) gets the note
+	// on the next advance to the same commit.
+	e.git("update-ref", "-d", "refs/notes/confit-applied")
+	if _, err := b.Advance("hm", r2.Edit.Commit, "", "ok"); err != nil {
+		t.Fatal(err)
+	}
+	if note := e.git("notes", "--ref=confit-applied", "show", r2.Edit.Commit); !strings.Contains(note, "Consumer: hm") {
+		t.Fatalf("missing note not rewritten: %q", note)
+	}
 	p, _ := b.Pending("hm")
 	if !p.Empty || len(p.Commits) != 0 {
 		t.Fatalf("pending after advance: %+v", p)

@@ -39,6 +39,7 @@ const usage = `usage: confit [-C <repo>] <command> [args]
   apply <consumer> [--force] [--json]
   applied advance <consumer> <commit> [--expect OLD] [--result TEXT] [--json]
   status [--json]
+  host
   merge-driver json|ini %O %A %B [%P]
   version
 
@@ -113,6 +114,9 @@ func run(args []string) int {
 		return cmdAdvance(b, args)
 	case "status":
 		return cmdStatus(b, args)
+	case "host":
+		fmt.Println(b.Config.Host)
+		return 0
 	}
 	return usageErr("unknown command: " + cmd)
 }

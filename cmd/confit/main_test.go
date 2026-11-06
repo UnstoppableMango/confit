@@ -76,5 +76,8 @@ func TestCLI(t *testing.T) {
 		t.Fatalf("manifest:\n%s", out)
 	}
 	confit(1, "integrate", "no-such-editor") // an error, not a panic
+	if got := strings.TrimSpace(confit(0, "host")); got != "desktop" {
+		t.Fatalf("host = %q", got)
+	}
 	confit(2, "bogus")
 }

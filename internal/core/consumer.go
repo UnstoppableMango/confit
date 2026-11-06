@@ -368,10 +368,24 @@ func (b *Buffer) advance(cs Consumer, commit, old gitrepo.Hash, result string) e
 			return err
 		}
 	}
-	note := trailers("Consumer", cs.Name, "Applied-At", b.now().UTC().Format("2006-01-02T15:04:05Z"),
-		"Result", result, "Host", b.Config.Host, "Tool", "confit/"+Version)
-	if err := b.Repo.AppendNote(notesRef, commit, note, b.committer("apply")); err != nil {
-		return fmt.Errorf("applied pointer moved, but writing the apply note failed: %w", err)
+	// A switch that leaves the pointer where it was records nothing
+	// (docs/multi-host.md, decision 4): the note for this commit already
+	// says it was applied. If that note was never written (the write failed
+	// after the pointer moved), this retry writes it.
+	write := old != commit
+	if !write {
+		existing, err := b.Repo.ReadNote(notesRef, commit)
+		if err != nil {
+			return err
+		}
+		write = !strings.Contains(existing, "Consumer: "+cs.Name+"\n")
+	}
+	if write {
+		note := trailers("Consumer", cs.Name, "Applied-At", b.now().UTC().Format("2006-01-02T15:04:05Z"),
+			"Result", result, "Host", b.Config.Host, "Tool", "confit/"+Version)
+		if err := b.Repo.AppendNote(notesRef, commit, note, b.committer("apply")); err != nil {
+			return fmt.Errorf("applied pointer moved, but writing the apply note failed: %w", err)
+		}
 	}
 	return b.syncEditors(cs, commit)
 }
