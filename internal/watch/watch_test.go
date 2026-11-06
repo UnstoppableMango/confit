@@ -101,6 +101,7 @@ func TestAllReloads(t *testing.T) {
 	waitFor("a's startup capture", func() bool { return count("a") == 1 })
 	listed.Store([]adapter.Config{a, b})
 	waitFor("b's startup capture after the reload", func() bool { return count("b") == 1 })
+	time.Sleep(50 * time.Millisecond) // let b's inotify watch register, as TestFileWatchDebounces does
 	before := count("b")
 	os.WriteFile(filepath.Join(dir, "b.json"), []byte("{}"), 0o644)
 	waitFor("a capture after b changed", func() bool { return count("b") > before })

@@ -340,11 +340,13 @@ func cmdConsumerAdd(b *core.Buffer, args []string) int {
 		}
 	}
 	name, host := pos[0], b.Config.Host
-	if _, ok := b.Config.Manifest.Hosts[host].Consumers[name]; ok && *ifMissing {
-		fmt.Printf("consumer %s already declared\n", name)
-		return 0
-	}
+	declared := false
 	_, err = b.UpdateManifest("consumer "+name, func(m *core.Manifest) error {
+		// Checked on the manifest read under the lock, so a consumer another
+		// process just declared is never overwritten.
+		if _, declared = m.Hosts[host].Consumers[name]; declared && *ifMissing {
+			return nil
+		}
 		m.SeedHost(host)
 		h := m.Hosts[host]
 		if h.Consumers == nil {
@@ -356,6 +358,10 @@ func cmdConsumerAdd(b *core.Buffer, args []string) int {
 	})
 	if err != nil {
 		return fail(err)
+	}
+	if declared && *ifMissing {
+		fmt.Printf("consumer %s already declared\n", name)
+		return 0
 	}
 	fmt.Printf("consumer %s added (drift policy %s)\n", name, *drift)
 	return 0

@@ -157,7 +157,7 @@ in
             # Without the shared history there is nothing to capture into
             # or apply; try again on the next switch.
             if ! run git clone --quiet --bare ${escapeShellArg cfg.remote} ${escapeShellArg cfg.repo}; then
-              warnEcho "confit: could not clone ${cfg.remote}; skipping confit until it is reachable"
+              warnEcho "confit: could not clone the remote; skipping confit until it is reachable"
               confitSkip=1
             fi
           fi

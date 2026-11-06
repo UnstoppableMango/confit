@@ -106,7 +106,6 @@ Every command takes `-C <repo>` (or `$CONFIT_REPO`). Most take `--json`. Exit co
 - Session squashing on integration. `confit watch` debouncing already turns a slider drag into one commit.
 - A NixOS module (system-wide dconf, other system consumers). The home-manager module covers the user side.
 - k8s-style keyed list merges (`name` keys) in the JSON driver.
-- Pushing to a remote and the slim home-manager module: stages 3 and 4 of [docs/multi-host.md](docs/multi-host.md).
 
 ## Development
 
