@@ -80,4 +80,16 @@ func TestCLI(t *testing.T) {
 		t.Fatalf("host = %q", got)
 	}
 	confit(2, "bogus")
+	// With a remote, commands push; an unreachable one is only a warning.
+	remote := filepath.Join(dir, "remote.git")
+	exec.Command("git", "-C", repo, "remote", "add", "origin", remote).Run()
+	cmd := exec.Command(bin, "-C", repo, "sync")
+	if out, err := cmd.CombinedOutput(); err != nil || !strings.Contains(string(out), "warning: could not fetch") {
+		t.Fatalf("offline sync: %v\n%s", err, out)
+	}
+	exec.Command("git", "init", "--quiet", "--bare", remote).Run()
+	confit(0, "sync")
+	if out, _ := exec.Command("git", "-C", remote, "rev-parse", "desired").Output(); len(out) == 0 {
+		t.Fatal("sync pushed nothing")
+	}
 }

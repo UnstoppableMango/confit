@@ -106,7 +106,7 @@ func TestDesktop(t *testing.T) {
 		}
 		d.confit(0, "apply", consumer)
 		d.expectApplied("desired")
-		if note := d.git("notes", "--ref=confit-applied", "show", "desired"); !strings.Contains(note, "Consumer: "+consumer) {
+		if note := d.git("notes", "--ref=confit-applied/"+host, "show", "desired"); !strings.Contains(note, "Consumer: "+consumer) {
 			t.Fatalf("apply note:\n%s", note)
 		}
 	})

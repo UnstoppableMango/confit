@@ -45,6 +45,7 @@ type Config struct {
 	AppliedPrefix string // default "applied/"
 	Host          string
 	DriverCommand string // how git invokes confit's merge drivers, default "confit"
+	Remote        string // remote to sync with, default "origin"; sync is off if it isn't configured
 	Manifest      Manifest
 	// Adapters, Consumers and Tracking are this host's, from the manifest.
 	Adapters  map[string]adapter.Config
@@ -52,7 +53,11 @@ type Config struct {
 	Tracking  map[string]Tracking
 }
 
-const notesRef = "refs/notes/confit-applied"
+// notesPrefix holds one notes ref per host, so each host writes only its own
+// and notes never need merging.
+const notesPrefix = "refs/notes/confit-applied/"
+
+func (c Config) notesRef() string { return notesPrefix + c.Host }
 
 func loadConfig(r *gitrepo.Repo) (Config, error) {
 	raw, err := r.Config("confit")
@@ -73,6 +78,7 @@ func loadConfig(r *gitrepo.Repo) (Config, error) {
 		AppliedPrefix: or(last("confit.appliedPrefix"), "applied/"),
 		Host:          or(last("confit.host"), host),
 		DriverCommand: or(last("confit.driverCommand"), "confit"),
+		Remote:        or(last("confit.remote"), "origin"),
 	}, nil
 }
 

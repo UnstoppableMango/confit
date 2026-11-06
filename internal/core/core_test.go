@@ -420,25 +420,25 @@ func TestAdvanceRules(t *testing.T) {
 	if _, err := b.Advance("hm", r2.Edit.Commit, r1.Edit.Commit, "ok"); err != nil {
 		t.Fatal(err)
 	}
-	note := e.git("notes", "--ref=confit-applied", "show", r2.Edit.Commit)
+	note := e.git("notes", "--ref=confit-applied/laptop", "show", r2.Edit.Commit)
 	if !strings.Contains(note, "Consumer: hm") || !strings.Contains(note, "Result: ok") {
 		t.Fatalf("note: %s", note)
 	}
 	// Applying the same commit again moves nothing and adds no note.
-	notes := e.git("rev-parse", "refs/notes/confit-applied")
+	notes := e.git("rev-parse", "refs/notes/confit-applied/laptop")
 	if _, err := b.Advance("hm", r2.Edit.Commit, r2.Edit.Commit, "ok"); err != nil {
 		t.Fatal(err)
 	}
-	if got := e.git("rev-parse", "refs/notes/confit-applied"); got != notes {
+	if got := e.git("rev-parse", "refs/notes/confit-applied/laptop"); got != notes {
 		t.Fatal("a no-op advance wrote an apply note")
 	}
 	// A pointer that moved without its note (the write failed) gets the note
 	// on the next advance to the same commit.
-	e.git("update-ref", "-d", "refs/notes/confit-applied")
+	e.git("update-ref", "-d", "refs/notes/confit-applied/laptop")
 	if _, err := b.Advance("hm", r2.Edit.Commit, "", "ok"); err != nil {
 		t.Fatal(err)
 	}
-	if note := e.git("notes", "--ref=confit-applied", "show", r2.Edit.Commit); !strings.Contains(note, "Consumer: hm") {
+	if note := e.git("notes", "--ref=confit-applied/laptop", "show", r2.Edit.Commit); !strings.Contains(note, "Consumer: hm") {
 		t.Fatalf("missing note not rewritten: %q", note)
 	}
 	p, _ := b.Pending("hm")

@@ -39,11 +39,15 @@ const usage = `usage: confit [-C <repo>] <command> [args]
   apply <consumer> [--force] [--json]
   applied advance <consumer> <commit> [--expect OLD] [--result TEXT] [--json]
   status [--json]
+  sync
   host
   merge-driver json|ini %O %A %B [%P]
   version
 
 The repository is -C, else $CONFIT_REPO, else the current directory.
+Commands that write refs fetch from confit.remote (default origin) first and
+push afterwards; pending and prepare only fetch. Without that remote, or
+offline, everything works locally and is pushed later.
 Exit codes: 0 ok, 1 error, 2 usage, 3 conflict or blocked by drift policy.`
 
 const (
@@ -91,7 +95,54 @@ func run(args []string) int {
 	if err != nil {
 		return fail(err)
 	}
+	mode := syncModes[cmd]
+	if mode >= pullFirst {
+		res, err := b.Pull()
+		warn(res)
+		if err != nil {
+			return fail(err)
+		}
+	}
+	code := dispatch(b, repo, cmd, args)
+	if mode == pullAndPush {
+		res, err := b.Push()
+		warn(res)
+		if err != nil && code == 0 {
+			code = fail(err)
+		}
+	}
+	return code
+}
+
+// How commands sync with confit.remote: those that read the layers pull
+// first, and those that write refs push afterwards too.
+const (
+	noSync = iota
+	pullFirst
+	pullAndPush
+)
+
+var syncModes = map[string]int{
+	"adapter add": pullAndPush, "consumer add": pullAndPush, "capture": pullAndPush,
+	"edit commit": pullAndPush, "integrate": pullAndPush, "apply": pullAndPush,
+	"applied advance": pullAndPush, "sync": pullAndPush,
+	"pending": pullFirst, "prepare": pullFirst,
+}
+
+// warn reports sync problems that don't fail the command, such as being offline.
+func warn(r core.SyncResult) {
+	for _, w := range r.Warnings {
+		fmt.Fprintln(os.Stderr, "confit: warning:", w)
+	}
+}
+
+func dispatch(b *core.Buffer, repo, cmd string, args []string) int {
 	switch cmd {
+	case "sync":
+		if len(args) > 0 {
+			return usageErr("sync takes no arguments")
+		}
+		return 0
 	case "adapter add":
 		return cmdAdapterAdd(b, args)
 	case "consumer add":

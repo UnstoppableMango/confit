@@ -374,7 +374,7 @@ func (b *Buffer) advance(cs Consumer, commit, old gitrepo.Hash, result string) e
 	// after the pointer moved), this retry writes it.
 	write := old != commit
 	if !write {
-		existing, err := b.Repo.ReadNote(notesRef, commit)
+		existing, err := b.Repo.ReadNote(b.Config.notesRef(), commit)
 		if err != nil {
 			return err
 		}
@@ -383,7 +383,7 @@ func (b *Buffer) advance(cs Consumer, commit, old gitrepo.Hash, result string) e
 	if write {
 		note := trailers("Consumer", cs.Name, "Applied-At", b.now().UTC().Format("2006-01-02T15:04:05Z"),
 			"Result", result, "Host", b.Config.Host, "Tool", "confit/"+Version)
-		if err := b.Repo.AppendNote(notesRef, commit, note, b.committer("apply")); err != nil {
+		if err := b.Repo.AppendNote(b.Config.notesRef(), commit, note, b.committer("apply")); err != nil {
 			return fmt.Errorf("applied pointer moved, but writing the apply note failed: %w", err)
 		}
 	}
