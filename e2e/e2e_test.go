@@ -377,18 +377,18 @@ func (d *desktop) waitIdle() {
 func (d *desktop) watch() {
 	ctx, cancel := context.WithCancel(context.Background())
 	d.cancel = cancel
-	for _, a := range []string{"vscode", "dconf"} {
-		cmd := exec.CommandContext(ctx, d.bin, "-C", d.repo, "watch", a, "--quiet", quiet.String())
-		cmd.Env = d.env()
-		cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
-		cmd.WaitDelay = 10 * time.Second
-		log := &logWriter{t: d.root, prefix: "watch " + a + ": "}
-		cmd.Stdout, cmd.Stderr = log, log
-		if err := cmd.Start(); err != nil {
-			d.t.Fatal(err)
-		}
-		d.watchers = append(d.watchers, cmd)
+	// One watcher for everything this host tracks, as the home-manager
+	// module runs it.
+	cmd := exec.CommandContext(ctx, d.bin, "-C", d.repo, "watch", "--all", "--quiet", quiet.String())
+	cmd.Env = d.env()
+	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
+	cmd.WaitDelay = 10 * time.Second
+	log := &logWriter{t: d.root, prefix: "watch: "}
+	cmd.Stdout, cmd.Stderr = log, log
+	if err := cmd.Start(); err != nil {
+		d.t.Fatal(err)
 	}
+	d.watchers = append(d.watchers, cmd)
 	time.Sleep(quiet) // let dconf watch subscribe
 }
 

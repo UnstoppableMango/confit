@@ -551,3 +551,25 @@ func TestEditCommitNeedsPrefix(t *testing.T) {
 		t.Fatal("desired changed")
 	}
 }
+
+// A consumer listing "*" applies every adapter its host tracks, including
+// ones added later, and CaptureAll captures each of them.
+func TestConsumerOfAllAdapters(t *testing.T) {
+	e := newEnv(t, "")
+	a := e.fileAdapter("a", "{\"k\": 1}\n")
+	e.consumer("hm", "adopt", AllAdapters)
+	c := e.fileAdapter("c", "{\"k\": 2}\n")
+	b := e.open()
+	if got := b.Config.Consumers["hm"].Adapters; strings.Join(got, ",") != "a,c" {
+		t.Fatalf("adapters = %v", got)
+	}
+	writeFile(t, a, "{\"k\": 3}\n")
+	writeFile(t, c, "{\"k\": 4}\n")
+	rs, err := b.CaptureAll(true)
+	if err != nil || len(rs) != 2 || !rs[0].Edit.Changed || !rs[1].Edit.Changed {
+		t.Fatalf("capture all: %+v %v", rs, err)
+	}
+	if !strings.Contains(e.show("desired", "a/settings.json"), "3") || !strings.Contains(e.show("desired", "c/settings.json"), "4") {
+		t.Fatal("captures not integrated")
+	}
+}

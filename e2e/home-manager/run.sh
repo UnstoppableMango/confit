@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# Real home-manager switches with confit's module, in a throwaway HOME on a
-# private D-Bus. Run from the repo root inside `nix develop`.
+# Real home-manager switches with confit's module on two hosts, each with
+# its own HOME and private D-Bus, sharing one bare remote. Run from the repo
+# root inside `nix develop`.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 root=$(mktemp -d)
 trap 'rm -rf "$root"' EXIT
-home=$root/home
-mkdir -p "$home/.local/state/nix/profiles"
+remote=$root/remote.git
+git init --quiet --bare --initial-branch=desired "$remote"
 
-build() {
+build() { # host attr
   nix build --impure --no-link --print-out-paths --expr "
     let
       flake = builtins.getFlake (toString ./.);
@@ -20,14 +21,19 @@ build() {
       module = flake.homeManagerModules.default;
       confit = flake.packages.\${system}.default;
       user = \"$USER\";
-      home = \"$home\";
-    }).$1"
+      home = \"$root/$1\";
+      host = \"$1\";
+      remote = \"$remote\";
+    }).$2"
 }
-generation=$(build generation)
-gsettings=$(build gsettings)
+for host in laptop desktop; do
+  mkdir -p "$root/$host/.local/state/nix/profiles"
+  # An empty XDG_RUNTIME_DIR keeps the switch away from the machine's real
+  # systemd user manager, which would be asked to start this HOME's units.
+  mkdir -m 700 "$root/run-$host"
+done
+gsettings=$(build laptop gsettings)
 
-# An empty XDG_RUNTIME_DIR keeps the switch away from the machine's real
-# systemd user manager, which would be asked to start this HOME's units.
-mkdir -m 700 "$root/run"
-env -i HOME="$home" USER="$USER" XDG_RUNTIME_DIR="$root/run" PATH="$gsettings/bin:$PATH" TERM=dumb \
-  scripts/dbus-session.sh bash e2e/home-manager/scenario.sh "$generation"
+env -i ROOT="$root" REMOTE="$remote" USER="$USER" PATH="$gsettings/bin:$PATH" TERM=dumb \
+  LAPTOP="$(build laptop generation)" DESKTOP="$(build desktop generation)" \
+  bash e2e/home-manager/scenario.sh

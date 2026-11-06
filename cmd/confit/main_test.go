@@ -80,6 +80,14 @@ func TestCLI(t *testing.T) {
 		t.Fatalf("host = %q", got)
 	}
 	confit(2, "bogus")
+	// A consumer of every adapter, declared once: --if-missing keeps it.
+	confit(0, "consumer", "add", "all", "--adapter", "*")
+	confit(0, "consumer", "add", "all", "--adapter", "vscode", "--drift", "block", "--if-missing")
+	if out, _ := exec.Command("git", "-C", repo, "show", "desired:confit.toml").Output(); !strings.Contains(string(out), "[hosts.desktop.consumers.all]\nadapters = [\"*\"]\ndrift = \"adopt\"\n") {
+		t.Fatalf("manifest:\n%s", out)
+	}
+	confit(0, "capture", "--all")
+	confit(2, "capture", "--all", "vscode")
 	// With a remote, commands push; an unreachable one is only a warning.
 	remote := filepath.Join(dir, "remote.git")
 	exec.Command("git", "-C", repo, "remote", "add", "origin", remote).Run()

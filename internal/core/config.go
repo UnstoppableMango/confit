@@ -3,7 +3,7 @@ package core
 import (
 	"fmt"
 	"os"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/UnstoppableMango/confit/internal/adapter"
@@ -52,6 +52,10 @@ type Config struct {
 	Consumers map[string]Consumer
 	Tracking  map[string]Tracking
 }
+
+// AllAdapters in a consumer's adapter list stands for every adapter its host
+// tracks, so a consumer such as home-manager follows the manifest.
+const AllAdapters = "*"
 
 // notesPrefix holds one notes ref per host, so each host writes only its own
 // and notes never need merging.
@@ -112,8 +116,15 @@ func (b *Buffer) loadManifest(m Manifest) error {
 	}
 	for _, name := range sortedKeys(h.Consumers) {
 		mc := h.Consumers[name]
-		cs := Consumer{Name: name, Source: or(mc.Source, c.Integration), Adapters: append([]string(nil), mc.Adapters...),
-			Drift: DriftPolicy(or(mc.Drift, string(Adopt)))}
+		cs := Consumer{Name: name, Source: or(mc.Source, c.Integration), Drift: DriftPolicy(or(mc.Drift, string(Adopt)))}
+		for _, a := range mc.Adapters {
+			if a == AllAdapters {
+				cs.Adapters = append(cs.Adapters, sortedKeys(c.Adapters)...)
+			} else {
+				cs.Adapters = append(cs.Adapters, a)
+			}
+		}
+		cs.Adapters = slices.Compact(slices.Sorted(slices.Values(cs.Adapters)))
 		switch cs.Drift {
 		case Adopt, Revert, Block:
 		default:
@@ -124,7 +135,6 @@ func (b *Buffer) loadManifest(m Manifest) error {
 				return fmt.Errorf("consumer %s writes adapter %s, which host %s doesn't track", name, a, c.Host)
 			}
 		}
-		sort.Strings(cs.Adapters)
 		c.Consumers[name] = cs
 	}
 	// An adapter feeding a revert or block consumer must not integrate its

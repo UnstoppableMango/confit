@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -29,9 +30,9 @@ const usage = `usage: confit [-C <repo>] <command> [args]
   adapter add <name> --type dconf|file|<external> [--path DIR] [--file [NAME=]PATH]...
                      [--root /dconf/root/] [--command CMD] [--no-integrate]
                      [--track PREFIX]... [--local PREFIX]...
-  consumer add <name> [--source BRANCH] [--adapter NAME]... [--drift adopt|revert|block]
-  capture <adapter> [--no-integrate] [--json]
-  watch <adapter> [--quiet DURATION]
+  consumer add <name> [--source BRANCH] [--adapter NAME|'*']... [--drift adopt|revert|block] [--if-missing]
+  capture <adapter>|--all [--no-integrate] [--json]
+  watch <adapter>|--all [--quiet DURATION] [--reload DURATION]
   edit commit <editor> --dir DIR --prefix PATH [--message MSG] [--session ID] [--no-integrate] [--json]
   integrate [<editor>...] [--json]
   pending <consumer> [--json]
@@ -321,8 +322,9 @@ func cmdConsumerAdd(b *core.Buffer, args []string) int {
 	fs := flag.NewFlagSet("consumer add", flag.ContinueOnError)
 	source := fs.String("source", "", "branch to follow (default: integration branch)")
 	drift := fs.String("drift", "adopt", "drift policy: adopt, revert or block")
+	ifMissing := fs.Bool("if-missing", false, "leave a consumer the manifest already declares as it is")
 	var adapters multi
-	fs.Var(&adapters, "adapter", "adapter this consumer writes, repeatable")
+	fs.Var(&adapters, "adapter", "adapter this consumer writes, repeatable; * for every adapter this host tracks")
 	pos, err := parse(fs, args)
 	if err != nil || len(pos) != 1 {
 		return usageErr("consumer add <name>")
@@ -333,12 +335,18 @@ func cmdConsumerAdd(b *core.Buffer, args []string) int {
 		return usageErr("--drift must be adopt, revert or block")
 	}
 	for _, a := range adapters {
-		if _, ok := b.Config.Adapters[a]; !ok {
+		if _, ok := b.Config.Adapters[a]; !ok && a != core.AllAdapters {
 			return fail(fmt.Errorf("no adapter %q on host %s", a, b.Config.Host))
 		}
 	}
 	name, host := pos[0], b.Config.Host
+	declared := false
 	_, err = b.UpdateManifest("consumer "+name, func(m *core.Manifest) error {
+		// Checked on the manifest read under the lock, so a consumer another
+		// process just declared is never overwritten.
+		if _, declared = m.Hosts[host].Consumers[name]; declared && *ifMissing {
+			return nil
+		}
 		m.SeedHost(host)
 		h := m.Hosts[host]
 		if h.Consumers == nil {
@@ -350,6 +358,10 @@ func cmdConsumerAdd(b *core.Buffer, args []string) int {
 	})
 	if err != nil {
 		return fail(err)
+	}
+	if declared && *ifMissing {
+		fmt.Printf("consumer %s already declared\n", name)
+		return 0
 	}
 	fmt.Printf("consumer %s added (drift policy %s)\n", name, *drift)
 	return 0
@@ -371,9 +383,29 @@ func cmdCapture(b *core.Buffer, args []string) int {
 	fs := flag.NewFlagSet("capture", flag.ContinueOnError)
 	asJSON := fs.Bool("json", false, "machine-readable output")
 	noInt := fs.Bool("no-integrate", false, "commit to the editor branch only")
+	all := fs.Bool("all", false, "capture every adapter this host tracks")
 	pos, err := parse(fs, args)
-	if err != nil || len(pos) != 1 {
-		return usageErr("capture <adapter>")
+	if err != nil || len(pos) != 1 && !*all || len(pos) != 0 && *all {
+		return usageErr("capture <adapter>|--all")
+	}
+	if *all {
+		results, err := b.CaptureAll(!*noInt)
+		code := 0
+		if *asJSON {
+			emitJSON(results)
+		}
+		for _, r := range results {
+			if !*asJSON && r.Edit.Changed {
+				printCapture(r)
+			}
+			if c := conflictCode(r.Integrated); c > code {
+				code = c
+			}
+		}
+		if err != nil {
+			return fail(err)
+		}
+		return code
 	}
 	res, err := b.Capture(pos[0], !*noInt)
 	if err != nil {
@@ -388,17 +420,17 @@ func cmdCapture(b *core.Buffer, args []string) int {
 
 // cmdWatch is the optional trigger: it runs `confit capture` after each burst
 // of live changes. The capture is a separate process, so the watcher holds no
-// git state and a crash in either loses nothing.
+// git state and a crash in either loses nothing. With --all it watches every
+// dconf and file adapter this host tracks, and starts over when that set
+// changes in the manifest.
 func cmdWatch(b *core.Buffer, repo string, args []string) int {
 	fs := flag.NewFlagSet("watch", flag.ContinueOnError)
 	quiet := fs.Duration("quiet", 2*time.Second, "capture once the system has been unchanged this long")
+	reload := fs.Duration("reload", 30*time.Second, "with --all: how often to look for manifest changes")
+	all := fs.Bool("all", false, "watch every dconf and file adapter this host tracks")
 	pos, err := parse(fs, args)
-	if err != nil || len(pos) != 1 {
-		return usageErr("watch <adapter>")
-	}
-	cfg, ok := b.Config.Adapters[pos[0]]
-	if !ok {
-		return fail(fmt.Errorf("no adapter %q", pos[0]))
+	if err != nil || len(pos) != 1 && !*all || len(pos) != 0 && *all {
+		return usageErr("watch <adapter>|--all")
 	}
 	self, err := os.Executable()
 	if err != nil {
@@ -406,24 +438,56 @@ func cmdWatch(b *core.Buffer, repo string, args []string) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	err = watch.Run(ctx, cfg, watch.Options{
-		Quiet: *quiet,
-		Capture: func() error {
-			cmd := exec.Command(self, "-C", repo, "capture", cfg.Name)
-			cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-			err := cmd.Run()
-			var exit *exec.ExitError
-			if errors.As(err, &exit) && exit.ExitCode() == exitConflict {
-				return nil // reported by capture; the editor waits for a human
-			}
-			return err
-		},
-		Log: func(format string, args ...any) { fmt.Fprintf(os.Stderr, "confit watch: "+format+"\n", args...) },
-	})
+	log := func(format string, args ...any) { fmt.Fprintf(os.Stderr, "confit watch: "+format+"\n", args...) }
+	opts := func(name string) watch.Options {
+		return watch.Options{
+			Quiet: *quiet,
+			Capture: func() error {
+				cmd := exec.Command(self, "-C", repo, "capture", name)
+				cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+				err := cmd.Run()
+				var exit *exec.ExitError
+				if errors.As(err, &exit) && exit.ExitCode() == exitConflict {
+					return nil // reported by capture; the editor waits for a human
+				}
+				return err
+			},
+			Log: log,
+		}
+	}
+	if !*all {
+		cfg, ok := b.Config.Adapters[pos[0]]
+		if !ok {
+			return fail(fmt.Errorf("no adapter %q", pos[0]))
+		}
+		if err := watch.Run(ctx, cfg, opts(cfg.Name)); err != nil {
+			return fail(err)
+		}
+		return 0
+	}
+	err = watch.All(ctx, func() ([]adapter.Config, error) {
+		b, err := core.Open(repo)
+		if err != nil {
+			return nil, err
+		}
+		return watchable(b), nil
+	}, *reload, opts, log)
 	if err != nil {
 		return fail(err)
 	}
 	return 0
+}
+
+// watchable lists the adapters confit watch can follow, by name.
+func watchable(b *core.Buffer) []adapter.Config {
+	var out []adapter.Config
+	for _, cfg := range b.Config.Adapters {
+		if cfg.Type == "dconf" || cfg.Type == "file" {
+			out = append(out, cfg)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }
 
 func conflictCode(r *core.IntegrateResult) int {

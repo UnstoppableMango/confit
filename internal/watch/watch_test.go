@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -61,5 +62,51 @@ func TestUnsupportedAdapter(t *testing.T) {
 	err := Run(context.Background(), adapter.Config{Name: "k8s", Type: "kubectl"}, Options{Capture: func() error { return nil }})
 	if err == nil {
 		t.Fatal("want an error for an adapter type with no watcher")
+	}
+}
+
+// All picks up an adapter added to the manifest without a restart.
+func TestAllReloads(t *testing.T) {
+	dir := t.TempDir()
+	a := adapter.Config{Name: "a", Type: "file", Files: []string{"a.json=" + filepath.Join(dir, "a.json")}}
+	b := adapter.Config{Name: "b", Type: "file", Files: []string{"b.json=" + filepath.Join(dir, "b.json")}}
+	var listed atomic.Value
+	listed.Store([]adapter.Config{a})
+	var mu sync.Mutex
+	captures := map[string]int{}
+	count := func(name string) int { mu.Lock(); defer mu.Unlock(); return captures[name] }
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error)
+	go func() {
+		done <- All(ctx, func() ([]adapter.Config, error) { return listed.Load().([]adapter.Config), nil }, 50*time.Millisecond,
+			func(name string) Options {
+				return Options{Quiet: 50 * time.Millisecond, Capture: func() error {
+					mu.Lock()
+					captures[name]++
+					mu.Unlock()
+					return nil
+				}}
+			}, t.Logf)
+	}()
+	waitFor := func(what string, ok func() bool) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for !ok() {
+			if time.Now().After(deadline) {
+				t.Fatalf("timed out waiting for %s (captures %v)", what, captures)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	waitFor("a's startup capture", func() bool { return count("a") == 1 })
+	listed.Store([]adapter.Config{a, b})
+	waitFor("b's startup capture after the reload", func() bool { return count("b") == 1 })
+	time.Sleep(50 * time.Millisecond) // let b's inotify watch register, as TestFileWatchDebounces does
+	before := count("b")
+	os.WriteFile(filepath.Join(dir, "b.json"), []byte("{}"), 0o644)
+	waitFor("a capture after b changed", func() bool { return count("b") > before })
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
 	}
 }
