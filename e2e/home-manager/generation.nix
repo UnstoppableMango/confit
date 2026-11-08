@@ -1,6 +1,7 @@
 # A home-manager generation that uses confit's module, the way a desktop
-# would: VSCode settings and GNOME's dconf captured, home-manager applying.
-# Built by run.sh from the flake's inputs.
+# would: confit captures what the shared manifest tracks on this host and
+# home-manager applies it. Built by run.sh from the flake's inputs, once per
+# host.
 {
   pkgs,
   homeManagerConfiguration, # home-manager.lib.homeManagerConfiguration
@@ -8,6 +9,8 @@
   confit,
   user,
   home,
+  host,
+  remote,
 }:
 let
   hm = homeManagerConfiguration {
@@ -21,8 +24,7 @@ let
         services.confit = {
           enable = true;
           package = confit;
-          vscode.enable = true;
-          dconf.enable = true;
+          inherit host remote;
         };
         # Also declared in Nix: confit records it, and a UI change to it.
         dconf.settings."org/gnome/desktop/wm/preferences".button-layout = "appmenu:close";

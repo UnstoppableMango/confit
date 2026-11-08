@@ -8,19 +8,27 @@ Status: step 4 of the plan. The core runs end to end against VSCode settings and
 
 ## With home-manager
 
-The flake exports a Home Manager module. home-manager becomes a consumer: every `home-manager switch` captures live changes first, applies the drift policy, writes the integration branch to the live systems and records the apply. Between switches, systemd starts captures: a `.path` unit for files, `confit watch` for dconf, and an hourly timer.
+The flake exports a Home Manager module. home-manager becomes a consumer, `home-manager@<host>`: every `home-manager switch` captures live changes first, applies the drift policy, writes the integration branch to the live systems and records the apply. Between switches, one `confit watch --all` service and an hourly timer start captures.
 
 ```nix
 {
   imports = [ inputs.confit.homeManagerModules.default ];
   services.confit = {
     enable = true;
-    vscode.enable = true;   # ~/.config/Code/User/settings.json
-    dconf.enable = true;    # /org/gnome/
-    # drift = "adopt";      # or "revert" / "block"
+    remote = "git@github.com:me/desktop-config.git"; # shared by every host; optional
+    # host = "laptop";      # default: the hostname
   };
 }
 ```
+
+What is captured lives in the repo's manifest, so every host shares it. Declare adapters once, from any host:
+
+```sh
+confit adapter add vscode --type file --file 'settings.json=~/.config/Code/User/settings.json'
+confit adapter add dconf --type dconf --root /org/gnome/
+```
+
+A host tracks what it declared itself and the shared layer of everything else. Keys only one machine should keep go in its own layer: `confit adapter add vscode ... --local settings.json:window.zoomLevel`. The drift policy is the consumer's, in `[hosts.<host>.consumers."home-manager@<host>"]`.
 
 Don't also set `programs.vscode.userSettings`: that makes `settings.json` a read-only Nix store link, and the settings UI can't save. Keys in `dconf.settings` keep working; a switch records a UI change to one of them before home-manager overwrites it.
 
@@ -55,8 +63,8 @@ A consumer that confit can apply through its adapters runs `confit apply <consum
 |---|---|
 | `confit init [--bare] [--integration NAME] [path]` | Creates the repo, registers the merge drivers in git config, and creates the integration branch with a `.gitattributes`. Run it on every clone, since git config isn't cloned. |
 | `confit adapter add` / `confit consumer add` | Declare an adapter, or one of this host's consumers, in the manifest `confit.toml` on the integration branch. `adapter add` takes `--track` and `--local` (default: track everything, nothing local). Idempotent. |
-| `confit capture <adapter>` | Snapshot live state, commit the difference to `edits/<editor>`, integrate. No difference means no commit. |
-| `confit watch <adapter> [--quiet 2s]` | Optional trigger for dconf and file adapters: captures once, then runs `confit capture` after each burst of changes once the system has been quiet. Holds no state. |
+| `confit capture <adapter>\|--all` | Snapshot live state, commit the difference to `edits/<editor>`, integrate. No difference means no commit. |
+| `confit watch <adapter>\|--all [--quiet 2s]` | Optional trigger for dconf and file adapters: captures once, then runs `confit capture` after each burst of changes once the system has been quiet. Holds no state. `--all` follows every one this host tracks and picks up manifest changes. |
 | `confit edit commit <editor> --dir D --prefix P` | For UIs and extensions that hand confit their files directly. |
 | `confit integrate [<editor>...]` | Merge editor branches into the integration branch. A conflicting editor is reported and left out; the others still integrate. |
 | `confit pending <consumer>` | Commits in `applied/<consumer>..<source>` and the tree diff. |
@@ -98,7 +106,6 @@ Every command takes `-C <repo>` (or `$CONFIT_REPO`). Most take `--json`. Exit co
 - Session squashing on integration. `confit watch` debouncing already turns a slider drag into one commit.
 - A NixOS module (system-wide dconf, other system consumers). The home-manager module covers the user side.
 - k8s-style keyed list merges (`name` keys) in the JSON driver.
-- Pushing to a remote and the slim home-manager module: stages 3 and 4 of [docs/multi-host.md](docs/multi-host.md).
 
 ## Development
 

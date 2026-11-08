@@ -209,6 +209,30 @@ func (b *Buffer) integrationTip() (gitrepo.Hash, error) {
 	return tip, err
 }
 
+// CaptureAll captures every adapter this host tracks, in name order. An
+// adapter that fails doesn't stop the others.
+func (b *Buffer) CaptureAll(integrate bool) ([]CaptureResult, error) {
+	unlock, err := b.Repo.Lock()
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	if err := b.refresh(); err != nil {
+		return nil, err
+	}
+	var results []CaptureResult
+	var errs []error
+	for _, name := range sortedKeys(b.Config.Adapters) {
+		r, err := b.capture(name, integrate && b.Config.Adapters[name].Integrate)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", name, err))
+			continue
+		}
+		results = append(results, r)
+	}
+	return results, errors.Join(errs...)
+}
+
 // Capture snapshots an adapter's live state, commits any difference to its
 // editor branch, and integrates it unless the adapter is set not to.
 func (b *Buffer) Capture(name string, integrate bool) (CaptureResult, error) {
